@@ -3,9 +3,10 @@ import Logo from './Logo.tsx';
 interface FooterProps {
   onOpenConsultation: () => void;
   onOpenTerms: (type: 'terms' | 'privacy') => void;
+  onOpenAdmin?: () => void;
 }
 
-export default function Footer({ onOpenConsultation, onOpenTerms }: FooterProps) {
+export default function Footer({ onOpenConsultation, onOpenTerms, onOpenAdmin }: FooterProps) {
   return (
     <footer className="w-full bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] text-white py-16">
       <div className="w-full max-w-7xl mx-auto px-6 md:px-12">
@@ -49,6 +50,18 @@ export default function Footer({ onOpenConsultation, onOpenTerms }: FooterProps)
                   FAQ
                 </a>
               </li>
+              {onOpenAdmin && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenAdmin}
+                    className="hover:text-white transition-colors text-white/90 font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
+                    <span>Dashboard Admin (SQLite)</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

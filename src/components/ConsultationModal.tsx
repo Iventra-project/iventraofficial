@@ -60,6 +60,15 @@ export default function ConsultationModal({
     }
     setErrors({});
     setIsSubmitted(true);
+
+    // Save lead to SQLite database
+    fetch('/api/consultations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    }).catch((err) => {
+      console.warn('Gagal menyimpan lead ke SQLite backend:', err);
+    });
   };
 
   const encodedMessage = generateWhatsAppMessage(formData);

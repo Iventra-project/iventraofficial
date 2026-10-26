@@ -3,9 +3,20 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+import { apiApp } from './server/api.ts';
+
+function expressApiPlugin() {
+  return {
+    name: 'express-api-plugin',
+    configureServer(server: any) {
+      server.middlewares.use(apiApp);
+    }
+  };
+}
+
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [expressApiPlugin(), react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
