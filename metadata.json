@@ -1,0 +1,6 @@
+{
+  "name": "Iventra - Event Management Platform",
+  "description": "Platform Event Mahasiswa & Komunitas Indonesia. Kelola pendaftaran, seleksi lomba, dan notifikasi peserta otomatis untuk kepanitiaan kampus modern.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
