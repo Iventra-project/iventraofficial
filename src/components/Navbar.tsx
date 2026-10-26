@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import Logo from './Logo.tsx';
 
 interface NavbarProps {
@@ -14,6 +14,7 @@ export default function Navbar({
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('layanan');
+  const scrollAnimationFrame = useRef<number | null>(null);
 
   const navItems = [
     { href: '#layanan', label: 'Layanan', id: 'layanan' },
@@ -21,6 +22,112 @@ export default function Navbar({
     { href: '#alur', label: 'Alur', id: 'alur' },
     { href: '#faq', label: 'FAQ', id: 'faq' }
   ];
+
+  const handleNavigationClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    sectionId: string
+  ) => {
+    event.preventDefault();
+
+    const section = document.getElementById(sectionId);
+    if (!section) {
+      return;
+    }
+
+    const hash = `#${sectionId}`;
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, '', hash);
+    }
+
+    setActiveSection(sectionId);
+    if (scrollAnimationFrame.current !== null) {
+      cancelAnimationFrame(scrollAnimationFrame.current);
+      scrollAnimationFrame.current = null;
+    }
+
+    const start = window.scrollY;
+    const destination = Math.max(
+      0,
+      section.getBoundingClientRect().top + start - 80
+    );
+    const distance = destination - start;
+
+    if (Math.abs(distance) < 2) {
+      window.scrollTo({ top: destination, behavior: 'instant' });
+      return;
+    }
+
+    const duration = Math.min(2000, Math.max(1100, Math.abs(distance) * 0.65));
+    const startTime = performance.now();
+    const animateScroll = (currentTime: number) => {
+      const progress = Math.min((currentTime - startTime) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      window.scrollTo({
+        top: start + distance * easedProgress,
+        behavior: 'instant'
+      });
+
+      if (progress < 1) {
+        scrollAnimationFrame.current = requestAnimationFrame(animateScroll);
+      } else {
+        scrollAnimationFrame.current = null;
+      }
+    };
+
+    scrollAnimationFrame.current = requestAnimationFrame(animateScroll);
+  };
+
+  useEffect(() => {
+    const updateActiveSection = () => {
+      const activationPoint = window.scrollY + 81;
+      const currentSection = [...navItems]
+        .reverse()
+        .find((item) => {
+          const section = document.getElementById(item.id);
+          return section && section.offsetTop <= activationPoint;
+        });
+
+      setActiveSection(currentSection?.id ?? navItems[0].id);
+    };
+
+    const cancelScrollAnimation = () => {
+      if (scrollAnimationFrame.current !== null) {
+        cancelAnimationFrame(scrollAnimationFrame.current);
+        scrollAnimationFrame.current = null;
+      }
+    };
+    const cancelScrollAnimationOnKeydown = (event: KeyboardEvent) => {
+      const scrollKeys = [
+        'ArrowDown',
+        'ArrowUp',
+        'PageDown',
+        'PageUp',
+        'Home',
+        'End',
+        ' '
+      ];
+      if (scrollKeys.includes(event.key)) {
+        cancelScrollAnimation();
+      }
+    };
+
+    updateActiveSection();
+    window.addEventListener('scroll', updateActiveSection, { passive: true });
+    window.addEventListener('resize', updateActiveSection);
+    window.addEventListener('wheel', cancelScrollAnimation, { passive: true });
+    window.addEventListener('touchstart', cancelScrollAnimation, { passive: true });
+    window.addEventListener('keydown', cancelScrollAnimationOnKeydown);
+
+    return () => {
+      window.removeEventListener('scroll', updateActiveSection);
+      window.removeEventListener('resize', updateActiveSection);
+      window.removeEventListener('wheel', cancelScrollAnimation);
+      window.removeEventListener('touchstart', cancelScrollAnimation);
+      window.removeEventListener('keydown', cancelScrollAnimationOnKeydown);
+      cancelScrollAnimation();
+    };
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-[#efecff]/80 transition-all">
@@ -46,7 +153,7 @@ export default function Navbar({
             <a
               key={item.id}
               href={item.href}
-              onClick={() => setActiveSection(item.id)}
+              onClick={(event) => handleNavigationClick(event, item.id)}
               className={`text-sm transition-colors whitespace-nowrap font-semibold ${
                 activeSection === item.id
                   ? 'text-[#000cb8] font-bold'
@@ -108,8 +215,8 @@ export default function Navbar({
               <a
                 key={item.id}
                 href={item.href}
-                onClick={() => {
-                  setActiveSection(item.id);
+                onClick={(event) => {
+                  handleNavigationClick(event, item.id);
                   setMobileMenuOpen(false);
                 }}
                 className={`py-2 text-base font-semibold transition-colors ${
