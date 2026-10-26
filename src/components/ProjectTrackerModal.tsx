@@ -4,14 +4,16 @@ import { DEMO_PROJECTS, lookupProject, ProjectData } from '../utils/projectTrack
 interface ProjectTrackerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialProjectId?: string;
 }
 
 export default function ProjectTrackerModal({
   isOpen,
-  onClose
+  onClose,
+  initialProjectId
 }: ProjectTrackerModalProps) {
-  const [searchId, setSearchId] = useState('IVN-2025-FTUI');
-  const [project, setProject] = useState<ProjectData | null>(DEMO_PROJECTS['IVN-2025-FTUI']);
+  const [searchId, setSearchId] = useState(initialProjectId || 'IVN-2025-FTUI');
+  const [project, setProject] = useState<ProjectData | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -24,10 +26,29 @@ export default function ProjectTrackerModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (isOpen) {
+      const targetId = initialProjectId || searchId || 'IVN-2025-FTUI';
+      setSearchId(targetId);
+      handleSearch(targetId);
+    }
+  }, [isOpen, initialProjectId]);
+
   if (!isOpen) return null;
 
-  const handleSearch = (id: string) => {
+  const handleSearch = async (id: string) => {
     setErrorMsg('');
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id.trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProject(data);
+        return;
+      }
+    } catch {
+      // Fallback to local demo
+    }
+
     const found = lookupProject(id);
     if (found) {
       setProject(found);

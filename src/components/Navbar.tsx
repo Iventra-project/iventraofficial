@@ -5,12 +5,14 @@ interface NavbarProps {
   onOpenTracker: () => void;
   onOpenConsultation: () => void;
   onOpenProfile: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export default function Navbar({
   onOpenTracker,
   onOpenConsultation,
-  onOpenProfile
+  onOpenProfile,
+  onOpenAdmin
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('layanan');
@@ -192,6 +194,18 @@ export default function Navbar({
             </span>
           </button>
 
+          {onOpenAdmin && (
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#efecff] bg-[#f5f2ff] hover:bg-[#dedaff] text-[#0c1df3] text-xs font-bold transition-all cursor-pointer shadow-xs"
+              title="Dashboard Admin SQLite"
+            >
+              <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          )}
+
           {/* Mobile Menu Button */}
           <button
             type="button"
@@ -246,10 +260,23 @@ export default function Navbar({
                   setMobileMenuOpen(false);
                   onOpenConsultation();
                 }}
-                className="w-full py-3 rounded-xl bg-[#0c1df3] text-white font-bold text-sm text-center shadow-md"
+                className="w-full py-3 rounded-xl bg-[#0c1df3] text-white font-bold text-sm text-center shadow-md cursor-pointer"
               >
                 Konsultasi Event Gratis
               </button>
+              {onOpenAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAdmin();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-[#f5f2ff] border border-[#efecff] text-[#0c1df3] font-bold text-sm text-left px-4 flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                  <span>Dashboard Admin (SQLite)</span>
+                </button>
+              )}
             </div>
           </nav>
         </div>

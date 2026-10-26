@@ -3,9 +3,16 @@ import { useState } from 'react';
 interface HeroProps {
   onOpenConsultation: () => void;
   onSelectCampus?: (campus: string) => void;
+  totalProjectsHandled?: string;
+  totalActiveUsers?: string;
 }
 
-export default function Hero({ onOpenConsultation, onSelectCampus }: HeroProps) {
+export default function Hero({
+  onOpenConsultation,
+  onSelectCampus,
+  totalProjectsHandled = '120+',
+  totalActiveUsers = '15.000+'
+}: HeroProps) {
   const [selectedCampus, setSelectedCampus] = useState<string | null>(null);
 
   const campuses = [
@@ -101,7 +108,7 @@ export default function Hero({ onOpenConsultation, onSelectCampus }: HeroProps) 
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-2xl text-[#191930] font-extrabold tracking-tight tabular-nums">
-                          120+
+                          {totalProjectsHandled}
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-emerald-600/10 text-emerald-600 text-[10px] font-bold">
                           Verified
@@ -121,7 +128,7 @@ export default function Hero({ onOpenConsultation, onSelectCampus }: HeroProps) 
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-2xl text-[#191930] font-extrabold tracking-tight tabular-nums">
-                          15.000+
+                          {totalActiveUsers}
                         </span>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#0c1df3]/10 text-[#000cb8] text-[10px] font-bold">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#0c1df3] animate-pulse" />

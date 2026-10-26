@@ -1,8 +1,18 @@
-interface ServicesSectionProps {
-  onSelectPlan: (planId: 'spark' | 'flow' | 'bot') => void;
+export interface ServicesPrices {
+  sparkPrice?: string;
+  sparkPriceNote?: string;
+  flowPrice?: string;
+  flowPriceNote?: string;
+  botPrice?: string;
+  botPriceNote?: string;
 }
 
-export default function ServicesSection({ onSelectPlan }: ServicesSectionProps) {
+interface ServicesSectionProps {
+  onSelectPlan: (planId: 'spark' | 'flow' | 'bot') => void;
+  prices?: ServicesPrices;
+}
+
+export default function ServicesSection({ onSelectPlan, prices }: ServicesSectionProps) {
   return (
     <section className="w-full py-20 md:py-24 bg-white" id="layanan">
       <div className="w-full max-w-7xl mx-auto px-6 md:px-12">
@@ -47,9 +57,9 @@ export default function ServicesSection({ onSelectPlan }: ServicesSectionProps) 
                 <div className="text-xs text-[#757589] font-medium">Biaya Investasi:</div>
                 <div className="flex items-baseline gap-1 mt-0.5">
                   <span className="text-xl text-[#000cb8] font-bold tracking-tight">
-                    Rp 150rb - 300rb
+                    {prices?.sparkPrice || 'Rp 150rb - 300rb'}
                   </span>
-                  <span className="text-xs text-[#757589]">/ event</span>
+                  <span className="text-xs text-[#757589]">{prices?.sparkPriceNote || '/ event'}</span>
                 </div>
               </div>
 
@@ -97,9 +107,9 @@ export default function ServicesSection({ onSelectPlan }: ServicesSectionProps) 
                 <div className="text-xs text-[#0c1df3] font-semibold">Biaya Investasi:</div>
                 <div className="flex items-baseline gap-1 mt-0.5">
                   <span className="text-2xl text-[#000cb8] font-extrabold tracking-tight">
-                    Mulai Rp 500.000
+                    {prices?.flowPrice || 'Mulai Rp 500.000'}
                   </span>
-                  <span className="text-xs text-[#757589] font-medium">/ event</span>
+                  <span className="text-xs text-[#757589] font-medium">{prices?.flowPriceNote || '/ event'}</span>
                 </div>
               </div>
 
@@ -143,9 +153,9 @@ export default function ServicesSection({ onSelectPlan }: ServicesSectionProps) 
                 <div className="text-xs text-[#757589] font-medium">Biaya Investasi:</div>
                 <div className="flex items-baseline gap-1 mt-0.5">
                   <span className="text-xl text-[#000cb8] font-bold tracking-tight">
-                    Rp 70.000
+                    {prices?.botPrice || 'Rp 70.000'}
                   </span>
-                  <span className="text-xs text-[#757589]">/ event</span>
+                  <span className="text-xs text-[#757589]">{prices?.botPriceNote || '/ event'}</span>
                 </div>
               </div>
 
