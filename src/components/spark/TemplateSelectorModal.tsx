@@ -117,17 +117,15 @@ export default function TemplateSelectorModal({
                   <div
                     key={tmpl.id}
                     onClick={() => handleTemplateSelect(tmpl.id)}
-                    className={`group rounded-xl border transition-all duration-200 p-4 flex flex-col justify-between cursor-pointer text-left relative overflow-hidden ${
-                      isSelected
-                        ? 'border-blue-600 bg-white shadow-md ring-2 ring-blue-600'
-                        : 'border-slate-200 hover:border-blue-400 bg-white hover:shadow-sm'
-                    }`}
+                    className={`group rounded-xl border transition-all duration-200 p-4 flex flex-col justify-between cursor-pointer text-left relative overflow-hidden ${isSelected
+                      ? 'border-blue-600 bg-white shadow-md ring-2 ring-blue-600'
+                      : 'border-slate-200 hover:border-blue-400 bg-white hover:shadow-sm'
+                      }`}
                   >
                     <div>
                       {/* Banner Preview */}
-                      <div className={`h-24 rounded-lg bg-gradient-to-tr ${tmpl.previewGradient} p-3 text-slate-900 flex flex-col justify-between shadow-2xs mb-3 relative overflow-hidden ${
-                        isBlank ? 'border-2 border-dashed border-slate-300' : ''
-                      }`}>
+                      <div className={`h-24 rounded-lg bg-gradient-to-tr ${tmpl.previewGradient} p-3 text-slate-900 flex flex-col justify-between shadow-2xs mb-3 relative overflow-hidden ${isBlank ? 'border-2 border-dashed border-slate-300' : ''
+                        }`}>
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase tracking-wider bg-white/90 px-2 py-0.5 rounded shadow-2xs text-slate-900">
                             {tmpl.category}
@@ -164,11 +162,10 @@ export default function TemplateSelectorModal({
                           e.stopPropagation();
                           handleTemplateSelect(tmpl.id);
                         }}
-                        className={`w-full py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                          isBlank
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                            : 'bg-slate-900 hover:bg-blue-600 text-white'
-                        }`}
+                        className={`w-full py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isBlank
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                          : 'bg-slate-900 hover:bg-blue-600 text-white'
+                          }`}
                       >
                         {isBlank ? 'Mulai Kosongan →' : 'Pilih Template →'}
                       </button>

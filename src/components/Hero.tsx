@@ -158,11 +158,6 @@ export default function Hero({
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
                 {/* Left Col: Event Details */}
                 <div className="md:col-span-7 space-y-3.5">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>PENDAFTARAN DIBUKA SEKARANG</span>
-                  </div>
-
                   <h3 className="text-xl sm:text-2xl font-display font-extrabold text-white leading-tight">
                     Hackathon Nusantara 2025: Inovasi AI untuk Bangsa
                   </h3>
