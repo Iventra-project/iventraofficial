@@ -93,37 +93,37 @@ export default function ConsultationModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] text-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[20px]">chat</span>
+        <div className="px-6 py-5 bg-[#0b0c0e] text-white flex items-center justify-between border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-mono text-xs text-[#1f2de6] font-bold">
+              IVN
             </div>
             <div>
-              <h3 id="consultation-title" className="text-lg font-bold text-white">
-                Konsultasi &amp; Penyiapan Sistem
+              <h3 id="consultation-title" className="text-base font-bold text-white tracking-tight">
+                Konsultasi &amp; Implementasi Sistem
               </h3>
-              <p className="text-xs text-white/80">
-                Respon cepat via WhatsApp resmi tim Iventra
+              <p className="text-xs text-white/60 font-mono">
+                SLA respon resmi tim Iventra &lt;15 menit
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer text-sm font-mono"
             aria-label="Tutup Dialog"
           >
-            <span className="material-symbols-outlined text-[18px]">close</span>
+            ✕
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto">
+        <div className="p-6 overflow-y-auto bg-white">
           {!isSubmitted ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Package Selector */}
               <div>
-                <label className="block text-xs font-bold text-[#454557] mb-2 uppercase tracking-wide">
+                <label className="block text-xs font-mono font-bold text-[#585d6b] mb-2 uppercase tracking-wide">
                   Pilihan Paket Layanan
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -135,21 +135,21 @@ export default function ConsultationModal({
                         key={pid}
                         type="button"
                         onClick={() => setFormData({ ...formData, planId: pid })}
-                        className={`p-3 rounded-2xl text-left border transition-all cursor-pointer ${
+                        className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
                           selected
-                            ? 'bg-[#efecff] border-[#0c1df3] text-[#000cb8] shadow-xs'
-                            : 'bg-[#f5f2ff]/60 border-[#efecff] text-[#454557] hover:border-[#0c1df3]/40'
+                            ? 'bg-[#f4f5f8] border-[#0b0c0e] text-[#0b0c0e] ring-1 ring-[#0b0c0e]'
+                            : 'bg-white border-[#e2e5ea] text-[#585d6b] hover:border-[#b0b6c2]'
                         }`}
                       >
-                        <div className="text-xs font-extrabold flex items-center justify-between">
+                        <div className="text-xs font-bold flex items-center justify-between">
                           <span>{pkg.name}</span>
                           {pkg.isPopular && (
-                            <span className="text-[9px] bg-[#0c1df3] text-white px-1.5 py-0.2 rounded-full">
+                            <span className="text-[9px] font-mono bg-[#1f2de6] text-white px-1.5 py-0.5 rounded">
                               Top
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] font-bold text-[#0c1df3] mt-1">
+                        <div className="text-[11px] font-mono font-bold text-[#1f2de6] mt-1">
                           {pkg.priceLabel.split(' ')[0]} {pkg.priceLabel.split(' ')[1] || ''}
                         </div>
                       </button>
@@ -161,7 +161,7 @@ export default function ConsultationModal({
               {/* Contact Name & Campus */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="panitia-name" className="block text-xs font-bold text-[#191930] mb-1">
+                  <label htmlFor="panitia-name" className="block text-xs font-bold text-[#0b0c0e] mb-1">
                     Nama Panitia *
                   </label>
                   <input
@@ -171,15 +171,15 @@ export default function ConsultationModal({
                     placeholder="Contoh: Rian Pratama"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#c5c5da] focus:border-[#0c1df3] focus:ring-2 focus:ring-[#0c1df3]/20 text-sm outline-hidden"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] focus:border-[#0b0c0e] focus:ring-1 focus:ring-[#0b0c0e] text-sm outline-hidden text-[#0b0c0e] bg-white"
                   />
                   {errors.name && (
-                    <p className="text-[11px] text-[#ba1a1a] mt-1">{errors.name}</p>
+                    <p className="text-[11px] font-mono text-red-600 mt-1">{errors.name}</p>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="panitia-campus" className="block text-xs font-bold text-[#191930] mb-1">
+                  <label htmlFor="panitia-campus" className="block text-xs font-bold text-[#0b0c0e] mb-1">
                     Organisasi / Kampus *
                   </label>
                   <input
@@ -189,10 +189,10 @@ export default function ConsultationModal({
                     placeholder="Contoh: BEM FT UI"
                     value={formData.campus}
                     onChange={(e) => setFormData({ ...formData, campus: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#c5c5da] focus:border-[#0c1df3] focus:ring-2 focus:ring-[#0c1df3]/20 text-sm outline-hidden"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] focus:border-[#0b0c0e] focus:ring-1 focus:ring-[#0b0c0e] text-sm outline-hidden text-[#0b0c0e] bg-white"
                   />
                   {errors.campus && (
-                    <p className="text-[11px] text-[#ba1a1a] mt-1">{errors.campus}</p>
+                    <p className="text-[11px] font-mono text-red-600 mt-1">{errors.campus}</p>
                   )}
                 </div>
               </div>
@@ -200,7 +200,7 @@ export default function ConsultationModal({
               {/* Event Name & WA Number */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="panitia-event" className="block text-xs font-bold text-[#191930] mb-1">
+                  <label htmlFor="panitia-event" className="block text-xs font-bold text-[#0b0c0e] mb-1">
                     Nama Acara / Event *
                   </label>
                   <input
@@ -210,15 +210,15 @@ export default function ConsultationModal({
                     placeholder="Contoh: Engineering Career Expo"
                     value={formData.eventName}
                     onChange={(e) => setFormData({ ...formData, eventName: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#c5c5da] focus:border-[#0c1df3] focus:ring-2 focus:ring-[#0c1df3]/20 text-sm outline-hidden"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] focus:border-[#0b0c0e] focus:ring-1 focus:ring-[#0b0c0e] text-sm outline-hidden text-[#0b0c0e] bg-white"
                   />
                   {errors.eventName && (
-                    <p className="text-[11px] text-[#ba1a1a] mt-1">{errors.eventName}</p>
+                    <p className="text-[11px] font-mono text-red-600 mt-1">{errors.eventName}</p>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="panitia-wa" className="block text-xs font-bold text-[#191930] mb-1">
+                  <label htmlFor="panitia-wa" className="block text-xs font-bold text-[#0b0c0e] mb-1">
                     No. WhatsApp Aktif *
                   </label>
                   <input
@@ -228,21 +228,21 @@ export default function ConsultationModal({
                     placeholder="081234567890"
                     value={formData.contactNumber}
                     onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#c5c5da] focus:border-[#0c1df3] focus:ring-2 focus:ring-[#0c1df3]/20 text-sm outline-hidden"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] focus:border-[#0b0c0e] focus:ring-1 focus:ring-[#0b0c0e] text-sm outline-hidden text-[#0b0c0e] bg-white font-mono"
                   />
                   {errors.contactNumber && (
-                    <p className="text-[11px] text-[#ba1a1a] mt-1">{errors.contactNumber}</p>
+                    <p className="text-[11px] font-mono text-red-600 mt-1">{errors.contactNumber}</p>
                   )}
                 </div>
               </div>
 
               {/* Estimated Participants */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label htmlFor="panitia-participants" className="text-xs font-bold text-[#191930]">
+              <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
+                <div className="flex justify-between items-center mb-2">
+                  <label htmlFor="panitia-participants" className="text-xs font-bold text-[#0b0c0e]">
                     Estimasi Peserta
                   </label>
-                  <span className="text-xs font-extrabold text-[#000cb8]">
+                  <span className="text-xs font-mono font-bold text-[#1f2de6] px-2 py-0.5 rounded bg-white border border-[#e2e5ea]">
                     {formData.estimatedParticipants} orang
                   </span>
                 </div>
@@ -256,13 +256,13 @@ export default function ConsultationModal({
                   onChange={(e) =>
                     setFormData({ ...formData, estimatedParticipants: Number(e.target.value) })
                   }
-                  className="w-full accent-[#0c1df3] cursor-pointer"
+                  className="w-full accent-[#1f2de6] cursor-pointer"
                 />
               </div>
 
               {/* Notes */}
               <div>
-                <label htmlFor="panitia-notes" className="block text-xs font-bold text-[#191930] mb-1">
+                <label htmlFor="panitia-notes" className="block text-xs font-bold text-[#0b0c0e] mb-1">
                   Kebutuhan Khusus / Format Seleksi (Opsional)
                 </label>
                 <textarea
@@ -271,7 +271,7 @@ export default function ConsultationModal({
                   placeholder="Contoh: Butuh sistem penilaian dewan juri online dan barcode tiket H-1."
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#c5c5da] focus:border-[#0c1df3] text-sm outline-hidden resize-none"
+                  className="w-full px-3.5 py-2 rounded-lg border border-[#e2e5ea] focus:border-[#0b0c0e] text-sm outline-hidden resize-none text-[#0b0c0e]"
                 />
               </div>
 
@@ -279,42 +279,42 @@ export default function ConsultationModal({
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full py-3.5 rounded-full bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] text-white font-bold text-sm shadow-[0_8px_20px_rgba(12,29,243,0.35)] hover:-translate-y-0.5 transition-transform cursor-pointer"
+                  className="w-full py-3.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white font-semibold text-sm transition-all active:scale-[0.99] cursor-pointer shadow-xs"
                 >
-                  Lihat Draf Pesan &amp; Hubungi Sekarang
+                  Generate Draf WhatsApp &amp; Hubungi Tim
                 </button>
               </div>
             </form>
           ) : (
             /* Submission / WhatsApp Preview View */
             <div className="space-y-4 animate-fadeIn">
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
-                <span className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-[20px]">check</span>
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 font-mono text-sm font-bold">
+                  ✓
                 </span>
                 <div>
                   <h4 className="text-sm font-bold text-emerald-900">
-                    Draf Pesan Konsultasi Siap!
+                    Draf Pesan Konsultasi Siap Diteruskan
                   </h4>
                   <p className="text-xs text-emerald-700">
-                    Kirim langsung ke kontak konsultan Iventra untuk tanggapan instan.
+                    Kirim langsung ke kontak teknis Iventra untuk respon cepat.
                   </p>
                 </div>
               </div>
 
               {/* WhatsApp Message Preview Bubble */}
-              <div className="bg-[#f5f2ff] p-4 rounded-2xl border border-[#efecff] text-left">
-                <div className="text-[11px] font-bold text-[#454557] mb-2 uppercase tracking-wider flex items-center justify-between">
-                  <span>Pratinjau Pesan WhatsApp</span>
+              <div className="bg-[#f8f9fb] p-4 rounded-xl border border-[#e2e5ea] text-left">
+                <div className="text-[11px] font-mono font-bold text-[#585d6b] mb-2 uppercase tracking-wider flex items-center justify-between">
+                  <span>Pratinjau Pesan Terstruktur</span>
                   <button
                     type="button"
                     onClick={copyToClipboard}
-                    className="text-[#0c1df3] hover:underline font-semibold cursor-pointer text-xs"
+                    className="text-[#1f2de6] hover:underline font-mono cursor-pointer text-xs font-bold"
                   >
-                    {copied ? 'Tersalin ✓' : 'Salin Teks'}
+                    {copied ? 'Tersalin ✓' : 'Salin Pesan'}
                   </button>
                 </div>
-                <pre className="text-xs text-[#191930] whitespace-pre-wrap font-sans bg-white p-3 rounded-xl border border-[#efecff] leading-relaxed">
+                <pre className="text-xs text-[#0b0c0e] whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-[#e2e5ea] leading-relaxed">
                   {decodeURIComponent(encodedMessage)}
                 </pre>
               </div>
@@ -325,17 +325,17 @@ export default function ConsultationModal({
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-colors text-center"
+                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white font-semibold text-sm transition-colors text-center active:scale-[0.99]"
                 >
-                  <span className="material-symbols-outlined text-[20px]">send</span>
                   <span>Buka WhatsApp Sekarang</span>
+                  <span className="font-mono text-xs">→</span>
                 </a>
                 <button
                   type="button"
                   onClick={() => setIsSubmitted(false)}
-                  className="px-5 py-3 rounded-full bg-[#efecff] text-[#0c1df3] font-bold text-sm hover:bg-[#e8e5ff] transition-colors cursor-pointer"
+                  className="px-5 py-3 rounded-lg bg-[#f4f5f8] border border-[#e2e5ea] text-[#0b0c0e] font-semibold text-sm hover:bg-[#e2e5ea] transition-colors cursor-pointer"
                 >
-                  Ubah Data
+                  Ubah Rincian
                 </button>
               </div>
             </div>

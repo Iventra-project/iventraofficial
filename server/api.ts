@@ -11,14 +11,96 @@ import {
   getStats,
   seedDemoData,
   getSiteSettings,
-  updateSiteSettings
+  updateSiteSettings,
+  getWorkspaceBySlug,
+  getPublishedWorkspaceBySlug
 } from './db.ts';
+import authRouter from './auth.ts';
+import workspacesRouter from './workspaces.ts';
+import jwt from 'jsonwebtoken';
 
 export const apiApp = express();
 
 apiApp.use(express.json());
 
-// Overview stats
+// ─── Auth & Workspace routes ──────────────────────────────────────────────────
+apiApp.use('/api/auth', authRouter);
+apiApp.use('/api/workspaces', workspacesRouter);
+
+// ─── Public Event Renderer API ────────────────────────────────────────────────
+// GET /api/public/events/:slug
+// Fetches the public published event configuration, or draft configuration if authorized preview
+apiApp.get('/api/public/events/:slug', (req: Request, res: Response) => {
+  try {
+    const slug = req.params.slug;
+    const isPreview = req.query.preview === 'true';
+
+    const ws = getWorkspaceBySlug(slug);
+    if (!ws) {
+      return res.status(404).json({ error: 'Event tidak ditemukan atau tautan tidak valid.' });
+    }
+
+    // If preview requested, verify ownership token
+    if (isPreview) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        try {
+          const JWT_SECRET = process.env.JWT_SECRET || 'iventra-dev-secret-change-in-production';
+          const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
+          if (payload.userId === ws.owner_id) {
+            let configObj = null;
+            try {
+              configObj = ws.draft_config ? JSON.parse(ws.draft_config) : null;
+            } catch {}
+            return res.json({
+              id: ws.id,
+              name: ws.name,
+              slug: ws.slug,
+              status: ws.status,
+              template_id: ws.template_id,
+              isPreview: true,
+              config: configObj,
+              updatedAt: ws.updated_at
+            });
+          }
+        } catch {}
+      }
+    }
+
+    // Public view: check if published
+    if (ws.status !== 'published' || !ws.published_config) {
+      return res.status(403).json({
+        isDraft: true,
+        name: ws.name,
+        slug: ws.slug,
+        message: 'Website event ini masih dalam tahap penyusunan draft dan belum dipublikasikan untuk publik.'
+      });
+    }
+
+    let configObj = null;
+    try {
+      configObj = JSON.parse(ws.published_config);
+    } catch {}
+
+    return res.json({
+      id: ws.id,
+      name: ws.name,
+      slug: ws.slug,
+      status: ws.status,
+      template_id: ws.template_id,
+      isPreview: false,
+      config: configObj,
+      publishedAt: ws.published_at,
+      updatedAt: ws.updated_at
+    });
+  } catch (error: any) {
+    console.error('[public/events]', error);
+    return res.status(500).json({ error: 'Gagal memuat halaman event.' });
+  }
+});
+
+// ─── Overview stats (admin) ───────────────────────────────────────────────────
 apiApp.get('/api/stats', (_req: Request, res: Response) => {
   try {
     const stats = getStats();

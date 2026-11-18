@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import Logo from './Logo.tsx';
 
 interface NavbarProps {
@@ -6,23 +6,27 @@ interface NavbarProps {
   onOpenConsultation: () => void;
   onOpenProfile: () => void;
   onOpenAdmin?: () => void;
+  onOpenDashboard?: () => void;
+  isLoggedIn?: boolean;
+  userName?: string;
 }
 
 export default function Navbar({
   onOpenTracker,
   onOpenConsultation,
-  onOpenProfile,
-  onOpenAdmin
+  onOpenAdmin,
+  onOpenDashboard,
+  isLoggedIn = false,
+  userName
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('layanan');
-  const scrollAnimationFrame = useRef<number | null>(null);
+  const [activeSection, setActiveSection] = useState('overview');
 
   const navItems = [
-    { href: '#layanan', label: 'Layanan', id: 'layanan' },
-    { href: '#kelebihan', label: 'Kelebihan', id: 'kelebihan' },
-    { href: '#alur', label: 'Alur', id: 'alur' },
-    { href: '#faq', label: 'FAQ', id: 'faq' }
+    { href: '#overview', label: 'Overview', id: 'overview' },
+    { href: '#pricing', label: 'Pilihan Model', id: 'pricing' },
+    { href: '#features', label: 'Fitur Khusus', id: 'features' },
+    { href: '#process', label: 'Alur Kerja', id: 'process' }
   ];
 
   const handleNavigationClick = (
@@ -30,255 +34,178 @@ export default function Navbar({
     sectionId: string
   ) => {
     event.preventDefault();
-
     const section = document.getElementById(sectionId);
-    if (!section) {
-      return;
-    }
+    if (!section) return;
 
     const hash = `#${sectionId}`;
     if (window.location.hash !== hash) {
       window.history.pushState(null, '', hash);
     }
-
     setActiveSection(sectionId);
-    if (scrollAnimationFrame.current !== null) {
-      cancelAnimationFrame(scrollAnimationFrame.current);
-      scrollAnimationFrame.current = null;
-    }
 
-    const start = window.scrollY;
-    const destination = Math.max(
-      0,
-      section.getBoundingClientRect().top + start - 80
-    );
-    const distance = destination - start;
-
-    if (Math.abs(distance) < 2) {
-      window.scrollTo({ top: destination, behavior: 'instant' });
-      return;
-    }
-
-    const duration = Math.min(2000, Math.max(1100, Math.abs(distance) * 0.65));
-    const startTime = performance.now();
-    const animateScroll = (currentTime: number) => {
-      const progress = Math.min((currentTime - startTime) / duration, 1);
-      const easedProgress = 1 - Math.pow(1 - progress, 3);
-
-      window.scrollTo({
-        top: start + distance * easedProgress,
-        behavior: 'instant'
-      });
-
-      if (progress < 1) {
-        scrollAnimationFrame.current = requestAnimationFrame(animateScroll);
-      } else {
-        scrollAnimationFrame.current = null;
-      }
-    };
-
-    scrollAnimationFrame.current = requestAnimationFrame(animateScroll);
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setMobileMenuOpen(false);
   };
 
   useEffect(() => {
-    const updateActiveSection = () => {
-      const activationPoint = window.scrollY + 81;
-      const currentSection = [...navItems]
-        .reverse()
-        .find((item) => {
-          const section = document.getElementById(item.id);
-          return section && section.offsetTop <= activationPoint;
-        });
-
-      setActiveSection(currentSection?.id ?? navItems[0].id);
-    };
-
-    const cancelScrollAnimation = () => {
-      if (scrollAnimationFrame.current !== null) {
-        cancelAnimationFrame(scrollAnimationFrame.current);
-        scrollAnimationFrame.current = null;
+    const handleScroll = () => {
+      const scrollY = window.scrollY + 100;
+      for (const item of [...navItems].reverse()) {
+        const el = document.getElementById(item.id);
+        if (el && el.offsetTop <= scrollY) {
+          setActiveSection(item.id);
+          break;
+        }
       }
     };
-    const cancelScrollAnimationOnKeydown = (event: KeyboardEvent) => {
-      const scrollKeys = [
-        'ArrowDown',
-        'ArrowUp',
-        'PageDown',
-        'PageUp',
-        'Home',
-        'End',
-        ' '
-      ];
-      if (scrollKeys.includes(event.key)) {
-        cancelScrollAnimation();
-      }
-    };
-
-    updateActiveSection();
-    window.addEventListener('scroll', updateActiveSection, { passive: true });
-    window.addEventListener('resize', updateActiveSection);
-    window.addEventListener('wheel', cancelScrollAnimation, { passive: true });
-    window.addEventListener('touchstart', cancelScrollAnimation, { passive: true });
-    window.addEventListener('keydown', cancelScrollAnimationOnKeydown);
-
-    return () => {
-      window.removeEventListener('scroll', updateActiveSection);
-      window.removeEventListener('resize', updateActiveSection);
-      window.removeEventListener('wheel', cancelScrollAnimation);
-      window.removeEventListener('touchstart', cancelScrollAnimation);
-      window.removeEventListener('keydown', cancelScrollAnimationOnKeydown);
-      cancelScrollAnimation();
-    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-[#efecff]/80 transition-all">
-      <div className="h-20 w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-12 flex items-center justify-between">
-        {/* Brand */}
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-all">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+        {/* Logo Brand */}
         <a
           href="#"
-          className="flex items-center gap-2 sm:gap-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0c1df3] rounded-lg shrink-0"
-          aria-label="Iventra Beranda"
+          onClick={(e) => {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="flex items-center gap-2.5 group"
         >
-          <Logo size="md" />
-          <span className="text-xl sm:text-2xl text-[#000cb8] font-extrabold tracking-tight">
-            Iventra
-          </span>
+          <Logo size="sm" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xl font-display font-extrabold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
+              IVENTRA
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60">
+              EVENT PLATFORM
+            </span>
+          </div>
         </a>
 
-        {/* Desktop Navigation */}
-        <nav
-          className="hidden md:flex items-center gap-8"
-          aria-label="Navigasi Utama"
-        >
-          {navItems.map((item) => (
-            <a
-              key={item.id}
-              href={item.href}
-              onClick={(event) => handleNavigationClick(event, item.id)}
-              className={`text-sm transition-colors whitespace-nowrap font-semibold ${
-                activeSection === item.id
-                  ? 'text-[#000cb8] font-bold'
-                  : 'text-[#454557] hover:text-[#000cb8]'
-              }`}
-            >
-              {item.label}
-            </a>
-          ))}
+        {/* Center Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
+          {navItems.map((item) => {
+            const isActive = activeSection === item.id;
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                onClick={(e) => handleNavigationClick(e, item.id)}
+                className={`transition-colors py-1 relative ${
+                  isActive
+                    ? 'text-blue-600 font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {item.label}
+                {isActive && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                )}
+              </a>
+            );
+          })}
         </nav>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Right Action Buttons */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Tracker shortcut */}
           <button
             type="button"
             onClick={onOpenTracker}
-            className="inline-flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] text-white text-xs sm:text-sm font-semibold shadow-[0_8px_24px_-2px_rgba(12,29,243,0.35)] hover:-translate-y-0.5 active:translate-y-0 transition-transform duration-200 cursor-pointer whitespace-nowrap"
-            aria-label="Track Project Kepanitiaan"
+            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 hover:border-slate-300 bg-white/80 transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]" aria-hidden="true">
-              rocket_launch
-            </span>
-            <span className="hidden xs:inline sm:inline">Track Project</span>
-            <span className="xs:hidden inline sm:hidden">Track</span>
+            <span className="material-symbols-outlined text-[15px]">search</span>
+            <span>Cek Status</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className="hidden sm:flex w-9 h-9 rounded-full bg-[#000cb8] hover:bg-[#0c1df3] text-white items-center justify-center transition-colors shadow-sm cursor-pointer"
-            aria-label="Profil Akun Panitia"
-            title="Info Panitia"
-          >
-            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-              person
-            </span>
-          </button>
-
+          {/* Admin shortcut */}
           {onOpenAdmin && (
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#efecff] bg-[#f5f2ff] hover:bg-[#dedaff] text-[#0c1df3] text-xs font-bold transition-all cursor-pointer shadow-xs"
-              title="Dashboard Admin SQLite"
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Akses Admin"
             >
-              <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
-              <span className="hidden sm:inline">Admin</span>
+              <span>admin</span>
             </button>
           )}
 
-          {/* Mobile Menu Button */}
+          {/* Dashboard / Auth Button */}
+          {onOpenDashboard && (
+            <button
+              type="button"
+              onClick={onOpenDashboard}
+              className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-sm hover:shadow transition-all active:scale-[0.98] cursor-pointer"
+            >
+              {isLoggedIn ? (
+                <>
+                  <div className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px] font-bold">
+                    {(userName || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <span>Dashboard</span>
+                </>
+              ) : (
+                <>
+                  <span>Masuk Dashboard</span>
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Mobile menu trigger */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden w-9 h-9 rounded-xl bg-[#efecff] text-[#000cb8] flex items-center justify-center cursor-pointer"
-            aria-label={mobileMenuOpen ? 'Tutup Menu' : 'Buka Menu'}
-            aria-expanded={mobileMenuOpen}
+            className="md:hidden w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100"
+            aria-label="Toggle menu"
           >
-            <span className="material-symbols-outlined text-[22px]">
+            <span className="material-symbols-outlined text-[20px]">
               {mobileMenuOpen ? 'close' : 'menu'}
             </span>
           </button>
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#efecff] bg-white px-6 py-4 shadow-xl animate-fadeIn">
-          <nav className="flex flex-col gap-3 py-2">
-            {navItems.map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                onClick={(event) => {
-                  handleNavigationClick(event, item.id);
-                  setMobileMenuOpen(false);
-                }}
-                className={`py-2 text-base font-semibold transition-colors ${
-                  activeSection === item.id
-                    ? 'text-[#000cb8]'
-                    : 'text-[#454557] hover:text-[#000cb8]'
-                }`}
-              >
-                {item.label}
-              </a>
-            ))}
-            <div className="pt-3 border-t border-[#efecff] flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenProfile();
-                }}
-                className="w-full py-2.5 rounded-xl border border-[#efecff] text-[#454557] font-semibold text-sm text-left px-4 flex items-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[18px] text-[#0c1df3]">person</span>
-                <span>Info Akun Panitia</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenConsultation();
-                }}
-                className="w-full py-3 rounded-xl bg-[#0c1df3] text-white font-bold text-sm text-center shadow-md cursor-pointer"
-              >
-                Konsultasi Event Gratis
-              </button>
-              {onOpenAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onOpenAdmin();
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-[#f5f2ff] border border-[#efecff] text-[#0c1df3] font-bold text-sm text-left px-4 flex items-center gap-2 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
-                  <span>Dashboard Admin (SQLite)</span>
-                </button>
-              )}
-            </div>
-          </nav>
+        <div className="md:hidden bg-white border-b border-slate-200 px-6 py-4 space-y-3">
+          {navItems.map((item) => (
+            <a
+              key={item.id}
+              href={item.href}
+              onClick={(e) => handleNavigationClick(e, item.id)}
+              className="block py-2 text-sm font-medium text-slate-700 hover:text-blue-600"
+            >
+              {item.label}
+            </a>
+          ))}
+          <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onOpenTracker();
+              }}
+              className="w-full text-left py-2 text-xs text-slate-600 flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">search</span>
+              <span>Cek Status Project</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onOpenConsultation();
+              }}
+              className="w-full text-left py-2 text-xs text-blue-600 font-semibold"
+            >
+              Konsultasi Panitia Expert →
+            </button>
+          </div>
         </div>
       )}
     </header>

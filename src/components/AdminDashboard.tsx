@@ -460,129 +460,158 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* Admin Top Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-[#e2e1f4] shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2.5">
-              <Logo size="sm" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-black text-[#000cb8] tracking-tight">Iventra</span>
-                  <span className="px-2 py-0.5 rounded-md bg-[#efecff] text-[#0c1df3] text-[11px] font-extrabold uppercase tracking-wider">
-                    Admin
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-[#757589]">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Sistem Database Aktif (SQLite)</span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* ─── ADMIN TOP BAR (Unified Modern Shell) ─────────────────────── */}
+      <header className="sticky top-0 z-40 bg-white border-b border-[#e2e5ea] h-16 flex items-center px-4 sm:px-6 justify-between select-none shrink-0">
+        <div className="flex items-center gap-3 w-60 shrink-0">
+          <button
+            type="button"
+            onClick={onBackToSite}
+            className="flex items-center gap-2.5 hover:opacity-85 transition-opacity cursor-pointer text-left"
+            title="Kembali ke website utama"
+          >
+            <Logo size="sm" />
+            <span className="font-heading text-lg font-black tracking-tight text-[#0b0c0e]">
+              IVENTRA
+            </span>
+          </button>
+          <span className="px-2 py-0.5 rounded bg-[#0b0c0e] text-white text-[10px] font-mono font-bold tracking-wider uppercase">
+            ADMIN
+          </span>
+        </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleResetDemo}
-              title="Reset data demo SQLite"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#c5c5da] text-xs font-semibold text-[#454557] hover:bg-[#efecff] hover:text-[#0c1df3] transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-              <span>Reset Demo</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleOpenCreateModal()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c1df3] hover:bg-[#000cb8] text-white text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px]">add</span>
-              <span className="hidden xs:inline">Project Baru</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onBackToSite}
-              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-[#efecff] hover:bg-[#dedaff] text-[#000cb8] text-xs sm:text-sm font-bold transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-              <span className="hidden sm:inline">Website Utama</span>
-            </button>
+        {/* Center: Search status */}
+        <div className="hidden md:flex items-center flex-1 max-w-md mx-6">
+          <div className="flex items-center gap-2 text-xs font-mono text-[#585d6b]">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Database SQLite Terhubung • Mode Superuser Aktif</span>
           </div>
         </div>
 
-        {/* Tab Sub-navigation */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 border-t border-[#efecff] overflow-x-auto">
+        {/* Right Action buttons */}
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setActiveTab('overview')}
-            className={`py-3 px-4 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors ${
-              activeTab === 'overview'
-                ? 'border-[#0c1df3] text-[#0c1df3]'
-                : 'border-transparent text-[#757589] hover:text-[#191930]'
-            }`}
+            onClick={handleResetDemo}
+            title="Reset data demo SQLite"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e2e5ea] text-xs font-mono font-bold text-[#585d6b] hover:bg-[#f4f5f8] transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">dashboard</span>
-            <span>Ringkasan</span>
+            <span className="material-symbols-outlined text-[15px]">restart_alt</span>
+            <span>Reset Demo</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('projects')}
-            className={`py-3 px-4 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors ${
-              activeTab === 'projects'
-                ? 'border-[#0c1df3] text-[#0c1df3]'
-                : 'border-transparent text-[#757589] hover:text-[#191930]'
-            }`}
+            onClick={() => handleOpenCreateModal()}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">folder</span>
-            <span>Kelola Project</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-[#efecff] text-[#0c1df3] text-[10px]">
-              {projects.length}
-            </span>
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            <span>Project Baru</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('leads')}
-            className={`py-3 px-4 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors ${
-              activeTab === 'leads'
-                ? 'border-[#0c1df3] text-[#0c1df3]'
-                : 'border-transparent text-[#757589] hover:text-[#191930]'
-            }`}
+            onClick={onBackToSite}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">support_agent</span>
-            <span>Leads &amp; Konsultasi</span>
-            {stats && stats.newLeads > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-bold">
-                {stats.newLeads} Baru
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('settings')}
-            className={`py-3 px-4 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors ${
-              activeTab === 'settings'
-                ? 'border-[#0c1df3] text-[#0c1df3]'
-                : 'border-transparent text-[#757589] hover:text-[#191930]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">tune</span>
-            <span>Pengaturan Website</span>
+            <span>Website Utama</span>
+            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
           </button>
         </div>
       </header>
 
-      {/* Main Admin Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {loading && !stats ? (
-          <div className="py-24 text-center">
-            <div className="inline-block w-8 h-8 border-4 border-[#0c1df3] border-t-transparent rounded-full animate-spin mb-3" />
-            <p className="text-sm font-semibold text-[#757589]">Memuat data...</p>
+      {/* ─── MAIN ADMIN BODY WITH SIDEBAR ─────────────────────────────────── */}
+      <div className="flex flex-1 w-full overflow-hidden h-[calc(100vh-64px)]">
+        {/* LEFT SIDEBAR NAVIGATION */}
+        <aside className="w-60 bg-white border-r border-[#e2e5ea] flex flex-col justify-between py-5 px-3 shrink-0 select-none">
+          <div className="space-y-6">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#8c93a0] px-3 block mb-2">
+                Admin Navigation
+              </span>
+              <nav className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('overview')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'overview'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
+                  <span>Ringkasan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('projects')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'projects'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[18px]">folder_open</span>
+                    <span>Kelola Project</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b]">
+                    {projects.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('leads')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'leads'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[18px]">support_agent</span>
+                    <span>Leads &amp; Konsultasi</span>
+                  </div>
+                  {stats && stats.newLeads > 0 && (
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                      {stats.newLeads}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'settings'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">tune</span>
+                  <span>Pengaturan Web</span>
+                </button>
+              </nav>
+            </div>
           </div>
+
+          <div className="p-3 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea]">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[#0b0c0e] mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span className="font-heading">SQLite Engine</span>
+            </div>
+            <p className="text-[10px] font-mono text-[#8c93a0]">Local Jakarta DB • Latency &lt;1ms</p>
+          </div>
+        </aside>
+
+        {/* MAIN ADMIN CONTENT AREA */}
+        <main className="flex-1 overflow-y-auto bg-[#f8f9fb] p-6 lg:p-8">
+          {loading && !stats ? (
+            <div className="py-24 text-center">
+              <div className="inline-block w-8 h-8 border-4 border-[#1f2de6] border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-sm font-semibold text-[#585d6b]">Memuat data admin...</p>
+            </div>
         ) : (
           <>
             {/* TAB: OVERVIEW */}
@@ -1710,6 +1739,7 @@ export default function AdminDashboard({
           </>
         )}
       </main>
+      </div>
 
       {/* MODAL: LIGHTBOX FULLSCREEN PREVIEW SCREENSHOT */}
       {previewScreenshot && (

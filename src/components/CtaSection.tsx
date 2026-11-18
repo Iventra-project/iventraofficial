@@ -4,32 +4,43 @@ interface CtaSectionProps {
 
 export default function CtaSection({ onOpenConsultation }: CtaSectionProps) {
   return (
-    <section className="w-full py-16 md:py-20 bg-white">
-      <div className="w-full max-w-7xl mx-auto px-6 md:px-12">
-        <div className="w-full rounded-3xl bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] p-8 md:p-14 shadow-[0_20px_50px_-8px_rgba(12,29,243,0.35)] relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="text-white text-left max-w-2xl">
-            <span className="inline-block px-3.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold mb-4 text-white">
-              Mulai Sekarang
-            </span>
-            <h2 className="text-3xl md:text-4xl lg:text-[40px] font-extrabold leading-tight tracking-tight text-white">
-              Siap bikin eventmu naik level?
-            </h2>
-            <p className="text-base md:text-lg text-white/90 mt-3 leading-relaxed">
-              Konsultasi gratis format pendaftaran, alur seleksi, dan demo bot reminder langsung dengan tim kami.
-            </p>
-          </div>
+    <section className="w-full py-16 md:py-24 relative" id="hubungi">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="relative rounded-3xl bg-[#0b1739] text-white p-8 sm:p-14 md:p-16 overflow-hidden shadow-2xl border border-white/20">
+          {/* Subtle decorative circular backdrop watermark */}
+          <div className="absolute -right-20 -bottom-20 w-96 h-96 rounded-full bg-blue-600/30 pointer-events-none" />
+          <div className="absolute right-20 -top-20 w-72 h-72 rounded-full bg-cyan-400/20 blur-2xl pointer-events-none" />
 
-          <div>
-            <button
-              type="button"
-              onClick={onOpenConsultation}
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-white text-[#0c1df3] text-sm font-bold shadow-lg hover:scale-105 active:scale-100 transition-transform duration-200 whitespace-nowrap cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-                chat
-              </span>
-              <span>Hubungi Kami</span>
-            </button>
+          <div className="relative z-10 max-w-2xl text-left">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-white text-xs font-semibold mb-4 backdrop-blur-sm border border-white/25">
+              <span>MULAI SEKARANG</span>
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-extrabold tracking-tight text-white mb-4 leading-tight">
+              Siap Membuat Event Anda Bersinar Lebih Profesional?
+            </h2>
+
+            <p className="text-base text-blue-100 max-w-xl leading-relaxed mb-8 font-medium">
+              Buat landing page berkualitas tinggi dan percepat koordinasi kepanitiaan Anda sekarang juga. Gratis untuk event perdana.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
+              <a
+                href="#dashboard"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 font-bold text-sm shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <span>Buat Website Gratis</span>
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={onOpenConsultation}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-sm border border-white/25 transition-all cursor-pointer backdrop-blur-sm"
+              >
+                <span>Hubungi Tim Sales</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

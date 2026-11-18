@@ -51,7 +51,40 @@ export function initDb() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      service_type TEXT NOT NULL DEFAULT 'spark',
+      status TEXT NOT NULL DEFAULT 'draft',
+      slug TEXT UNIQUE,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
+
+  // Create indexes for performance
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);'); } catch {}
+
+  // Migrate workspaces table if columns do not exist
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN template_id TEXT DEFAULT "tech-summit";'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN draft_config TEXT DEFAULT "";'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN published_config TEXT DEFAULT "";'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN published_at TEXT DEFAULT NULL;'); } catch {}
 
   // Migrate projects table if columns do not exist
   try { db.exec('ALTER TABLE projects ADD COLUMN institutionName TEXT DEFAULT "";'); } catch {}
@@ -433,6 +466,211 @@ export function updateSiteSettings(settings: Record<string, string>): Record<str
 
   updateTx(Object.entries(settings));
   return getSiteSettings();
+}
+
+// ─────────────────────────────────────────────
+// USER data access helpers
+// ─────────────────────────────────────────────
+
+export interface UserRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getUserByEmail(email: string): UserRow | null {
+  return db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email) as UserRow | null;
+}
+
+export function getUserById(id: string): UserRow | null {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | null;
+}
+
+export function createUser(user: { id: string; email: string; password_hash: string; name: string }): UserRow {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), now, now);
+  return getUserById(user.id)!;
+}
+
+export function updateUserProfile(id: string, updates: { name?: string }): UserRow | null {
+  const now = new Date().toISOString();
+  if (updates.name) {
+    db.prepare('UPDATE users SET name = ?, updated_at = ? WHERE id = ?').run(updates.name.trim(), now, id);
+  }
+  return getUserById(id);
+}
+
+// ─────────────────────────────────────────────
+// WORKSPACE data access helpers
+// ─────────────────────────────────────────────
+
+export interface WorkspaceRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  service_type: string;
+  status: string;
+  slug: string | null;
+  description: string | null;
+  template_id?: string;
+  draft_config?: string;
+  published_config?: string;
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getWorkspacesByOwner(owner_id: string): WorkspaceRow[] {
+  return db.prepare('SELECT * FROM workspaces WHERE owner_id = ? ORDER BY created_at DESC').all(owner_id) as WorkspaceRow[];
+}
+
+export function getWorkspaceById(id: string, owner_id: string): WorkspaceRow | null {
+  return db.prepare('SELECT * FROM workspaces WHERE id = ? AND owner_id = ?').get(id, owner_id) as WorkspaceRow | null;
+}
+
+export function getWorkspaceBySlug(slug: string): WorkspaceRow | null {
+  return db.prepare('SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?)').get(slug) as WorkspaceRow | null;
+}
+
+export function getPublishedWorkspaceBySlug(slug: string): WorkspaceRow | null {
+  return db.prepare('SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?) AND status = "published"').get(slug) as WorkspaceRow | null;
+}
+
+export function createWorkspace(ws: {
+  id: string;
+  owner_id: string;
+  name: string;
+  service_type?: string;
+  slug?: string;
+  description?: string;
+  template_id?: string;
+  draft_config?: string;
+}): WorkspaceRow {
+  const now = new Date().toISOString();
+  const slug = ws.slug ? cleanSlug(ws.slug) : generateSlug(ws.name, ws.id);
+  const templateId = ws.template_id || 'tech-summit';
+  const draftConfig = ws.draft_config || '';
+
+  db.prepare(`
+    INSERT INTO workspaces (id, owner_id, name, service_type, status, slug, description, template_id, draft_config, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+  `).run(ws.id, ws.owner_id, ws.name.trim(), ws.service_type || 'spark', slug, ws.description || null, templateId, draftConfig, now, now);
+  return getWorkspaceById(ws.id, ws.owner_id)!;
+}
+
+export function updateWorkspace(id: string, owner_id: string, updates: {
+  name?: string;
+  status?: string;
+  description?: string;
+  slug?: string;
+  template_id?: string;
+}): WorkspaceRow | null {
+  const now = new Date().toISOString();
+  const ws = getWorkspaceById(id, owner_id);
+  if (!ws) return null;
+
+  const name = updates.name?.trim() ?? ws.name;
+  const status = updates.status ?? ws.status;
+  const description = updates.description !== undefined ? updates.description : ws.description;
+  const slug = updates.slug?.trim() ?? ws.slug;
+  const template_id = updates.template_id ?? ws.template_id;
+
+  db.prepare(`
+    UPDATE workspaces SET name = ?, status = ?, description = ?, slug = ?, template_id = ?, updated_at = ?
+    WHERE id = ? AND owner_id = ?
+  `).run(name, status, description, slug, template_id, now, id, owner_id);
+
+  return getWorkspaceById(id, owner_id);
+}
+
+export function saveWorkspaceBuilderConfig(id: string, owner_id: string, data: {
+  name?: string;
+  slug?: string;
+  description?: string;
+  template_id?: string;
+  draft_config: string;
+}): WorkspaceRow | null {
+  const now = new Date().toISOString();
+  const ws = getWorkspaceById(id, owner_id);
+  if (!ws) return null;
+
+  const name = data.name?.trim() ?? ws.name;
+  const slug = data.slug?.trim() ? cleanSlug(data.slug) : ws.slug;
+  const description = data.description !== undefined ? data.description : ws.description;
+  const template_id = data.template_id ?? ws.template_id;
+
+  db.prepare(`
+    UPDATE workspaces SET name = ?, slug = ?, description = ?, template_id = ?, draft_config = ?, updated_at = ?
+    WHERE id = ? AND owner_id = ?
+  `).run(name, slug, description, template_id, data.draft_config, now, id, owner_id);
+
+  return getWorkspaceById(id, owner_id);
+}
+
+export function publishWorkspace(id: string, owner_id: string): { success: boolean; workspace?: WorkspaceRow; error?: string } {
+  const ws = getWorkspaceById(id, owner_id);
+  if (!ws) return { success: false, error: 'Workspace tidak ditemukan.' };
+
+  const configToPublish = ws.draft_config && ws.draft_config.trim().length > 0 ? ws.draft_config : '';
+  if (!configToPublish) {
+    return { success: false, error: 'Konfigurasi event masih kosong. Simpan draft terlebih dahulu.' };
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE workspaces SET
+      status = 'published',
+      published_config = draft_config,
+      published_at = ?,
+      updated_at = ?
+    WHERE id = ? AND owner_id = ?
+  `).run(now, now, id, owner_id);
+
+  const updated = getWorkspaceById(id, owner_id)!;
+  return { success: true, workspace: updated };
+}
+
+export function unpublishWorkspace(id: string, owner_id: string): { success: boolean; workspace?: WorkspaceRow; error?: string } {
+  const ws = getWorkspaceById(id, owner_id);
+  if (!ws) return { success: false, error: 'Workspace tidak ditemukan.' };
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE workspaces SET
+      status = 'draft',
+      updated_at = ?
+    WHERE id = ? AND owner_id = ?
+  `).run(now, id, owner_id);
+
+  const updated = getWorkspaceById(id, owner_id)!;
+  return { success: true, workspace: updated };
+}
+
+export function deleteWorkspace(id: string, owner_id: string): boolean {
+  const result = db.prepare('DELETE FROM workspaces WHERE id = ? AND owner_id = ?').run(id, owner_id);
+  return result.changes > 0;
+}
+
+export function cleanSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 50);
+}
+
+export function generateSlug(name: string, id: string): string {
+  const base = cleanSlug(name) || 'event';
+  const suffix = id.slice(-6);
+  return `${base}-${suffix}`;
 }
 
 // Auto init on import

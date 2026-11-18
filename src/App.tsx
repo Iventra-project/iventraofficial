@@ -12,16 +12,78 @@ import ConsultationModal from './components/ConsultationModal.tsx';
 import ProjectTrackerModal from './components/ProjectTrackerModal.tsx';
 import InfoModal from './components/InfoModal.tsx';
 import AdminDashboard, { SiteSettings } from './components/AdminDashboard.tsx';
+import AuthPage, { type AuthUser } from './components/AuthPage.tsx';
+import UserDashboard, { type Workspace } from './components/UserDashboard.tsx';
+import SparkBuilder from './components/spark/SparkBuilder.tsx';
+import PublicEventPage from './components/spark/PublicEventPage.tsx';
+
+// ─── Auth Helpers ─────────────────────────────────────────────────────────────
+
+const TOKEN_KEY = 'iventra_token';
+const USER_KEY = 'iventra_user';
+
+function loadStoredAuth(): { token: string; user: AuthUser } | null {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const userRaw = localStorage.getItem(USER_KEY);
+    if (!token || !userRaw) return null;
+    return { token, user: JSON.parse(userRaw) };
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredAuth(token: string, user: AuthUser) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+// ─── App Views ────────────────────────────────────────────────────────────────
+
+type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event';
+
+function parseHash(hash: string): { view: AppView; slug?: string; builderId?: string } {
+  if (hash.startsWith('#event/')) {
+    const slug = hash.slice(7).split('?')[0];
+    return { view: 'public-event', slug };
+  }
+  if (hash.startsWith('#builder/')) {
+    const builderId = hash.slice(9).split('?')[0];
+    return { view: 'builder', builderId };
+  }
+  if (hash === '#admin') {
+    return { view: 'admin' };
+  }
+  if (hash === '#dashboard') {
+    return { view: 'dashboard' };
+  }
+  if (hash === '#auth') {
+    return { view: 'auth' };
+  }
+  return { view: 'landing' };
+}
 
 export default function App() {
-  const [isAdminView, setIsAdminView] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return (
-      window.location.hash === '#admin' ||
-      window.location.pathname.startsWith('/admin') ||
-      window.location.search.includes('admin')
-    );
+  const [view, setView] = useState<AppView>(() => {
+    if (typeof window === 'undefined') return 'landing';
+    return parseHash(window.location.hash).view;
   });
+
+  const [activeSlug, setActiveSlug] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return parseHash(window.location.hash).slug || '';
+  });
+
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
+
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'spark' | 'flow' | 'bot' | null>('flow');
@@ -29,7 +91,7 @@ export default function App() {
   const [trackerInitialId, setTrackerInitialId] = useState('IVN-2025-FTUI');
   const [infoModalType, setInfoModalType] = useState<'profile' | 'terms' | 'privacy' | null>(null);
 
-  // Dynamic Site Settings from SQLite (Pricing & Hero Stats)
+  // Dynamic Site Settings
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({
     sparkPrice: 'Rp 150rb - 300rb',
     sparkPriceNote: '/ event',
@@ -40,6 +102,8 @@ export default function App() {
     totalProjectsHandled: '120+',
     totalActiveUsers: '15.000+'
   });
+
+  // ─── Load Settings ─────────────────────────────────────────────────────────
 
   const loadSettings = async () => {
     try {
@@ -57,24 +121,105 @@ export default function App() {
     loadSettings();
   }, []);
 
-  // Sync hash change
+  // ─── Auth: Restore session on mount ───────────────────────────────────────
+
   useEffect(() => {
-    const handleHashOrUrlChange = () => {
-      const isNowAdmin =
-        window.location.hash === '#admin' ||
-        window.location.pathname.startsWith('/admin') ||
-        window.location.search.includes('admin');
-      setIsAdminView(isNowAdmin);
-    };
+    const stored = loadStoredAuth();
+    if (!stored) return;
 
-    window.addEventListener('hashchange', handleHashOrUrlChange);
-    window.addEventListener('popstate', handleHashOrUrlChange);
+    setIsCheckingAuth(true);
+    fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${stored.token}` }
+    })
+      .then((res) => {
+        if (res.ok) return res.json();
+        throw new Error('invalid');
+      })
+      .then((data) => {
+        setAuthToken(stored.token);
+        setAuthUser(data.user);
 
-    return () => {
-      window.removeEventListener('hashchange', handleHashOrUrlChange);
-      window.removeEventListener('popstate', handleHashOrUrlChange);
-    };
+        // If URL hash was #dashboard, ensure we show dashboard
+        const currentHash = window.location.hash;
+        if (currentHash === '#dashboard') {
+          setView('dashboard');
+        } else if (currentHash.startsWith('#builder/')) {
+          const wsId = currentHash.slice(9).split('?')[0];
+          fetch(`/api/workspaces/${wsId}`, {
+            headers: { Authorization: `Bearer ${stored.token}` }
+          })
+            .then((r) => r.json())
+            .then((ws) => {
+              if (ws && ws.id) {
+                setActiveWorkspace(ws);
+                setView('builder');
+              }
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        clearStoredAuth();
+      })
+      .finally(() => {
+        setIsCheckingAuth(false);
+      });
   }, []);
+
+  // ─── Hash Change Listener ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const parsed = parseHash(window.location.hash);
+
+      if (parsed.view === 'public-event' && parsed.slug) {
+        setActiveSlug(parsed.slug);
+        setView('public-event');
+      } else if (parsed.view === 'builder') {
+        const wsId = parsed.builderId;
+        if (activeWorkspace && activeWorkspace.id === wsId) {
+          setView('builder');
+        } else if (wsId && authToken) {
+          fetch(`/api/workspaces/${wsId}`, {
+            headers: { Authorization: `Bearer ${authToken}` }
+          })
+            .then((r) => r.json())
+            .then((ws) => {
+              if (ws && ws.id) {
+                setActiveWorkspace(ws);
+                setView('builder');
+              } else {
+                setView('dashboard');
+              }
+            })
+            .catch(() => setView('dashboard'));
+        } else {
+          setView(authToken ? 'dashboard' : 'auth');
+        }
+      } else if (parsed.view === 'dashboard') {
+        if (authToken && authUser) {
+          setView('dashboard');
+        } else {
+          setView('auth');
+        }
+      } else if (parsed.view === 'admin') {
+        setView('admin');
+      } else if (parsed.view === 'auth') {
+        setView('auth');
+      } else {
+        setView('landing');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handleHashChange);
+    };
+  }, [authToken, authUser, activeWorkspace]);
+
+  // ─── Navigation Handlers ───────────────────────────────────────────────────
 
   const handleOpenConsultation = (plan?: 'spark' | 'flow' | 'bot') => {
     setSelectedPlan(plan || 'flow');
@@ -83,20 +228,58 @@ export default function App() {
 
   const handleOpenAdmin = () => {
     window.location.hash = '#admin';
-    setIsAdminView(true);
+    setView('admin');
+  };
+
+  const handleOpenDashboard = () => {
+    if (authToken && authUser) {
+      window.location.hash = '#dashboard';
+      setView('dashboard');
+    } else {
+      window.location.hash = '#auth';
+      setView('auth');
+    }
+  };
+
+  const handleOpenBuilder = (ws: Workspace) => {
+    setActiveWorkspace(ws);
+    window.location.hash = `#builder/${ws.id}`;
+    setView('builder');
   };
 
   const handleBackToSite = () => {
-    if (window.location.hash === '#admin') {
-      window.history.pushState(null, '', window.location.pathname);
-    }
-    setIsAdminView(false);
+    window.history.pushState(null, '', window.location.pathname);
+    setView('landing');
+  };
+
+  const handleBackToDashboard = () => {
+    window.location.hash = '#dashboard';
+    setView('dashboard');
+  };
+
+  const handleAuthSuccess = (token: string, user: AuthUser) => {
+    setAuthToken(token);
+    setAuthUser(user);
+    saveStoredAuth(token, user);
+    window.location.hash = '#dashboard';
+    setView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setAuthUser(null);
+    setActiveWorkspace(null);
+    clearStoredAuth();
+    window.history.pushState(null, '', window.location.pathname);
+    setView('landing');
   };
 
   const handlePreviewInTracker = (id: string) => {
     setTrackerInitialId(id);
     setIsTrackerOpen(true);
   };
+
+  // ─── Computed ──────────────────────────────────────────────────────────────
 
   const pricesForServices: ServicesPrices = {
     sparkPrice: siteSettings.sparkPrice,
@@ -107,8 +290,47 @@ export default function App() {
     botPriceNote: siteSettings.botPriceNote
   };
 
-  // If Admin View is active, render the dedicated Admin Dashboard
-  if (isAdminView) {
+  // ─── Views ─────────────────────────────────────────────────────────────────
+
+  // 1. PUBLIC EVENT RENDERER (`/#event/:slug`)
+  if (view === 'public-event' && activeSlug) {
+    return (
+      <PublicEventPage
+        slug={activeSlug}
+        onBackToHome={handleBackToSite}
+        onOpenBuilder={(wsId) => {
+          if (activeWorkspace && activeWorkspace.id === wsId) {
+            setView('builder');
+          } else {
+            handleOpenDashboard();
+          }
+        }}
+      />
+    );
+  }
+
+  // 2. SPARK EVENT BUILDER (`#builder/:id`)
+  if (view === 'builder') {
+    if (!authToken || !authUser) {
+      setView('auth');
+      return null;
+    }
+    if (!activeWorkspace) {
+      handleOpenDashboard();
+      return null;
+    }
+    return (
+      <SparkBuilder
+        workspace={activeWorkspace}
+        token={authToken}
+        onBackToDashboard={handleBackToDashboard}
+        onWorkspaceUpdated={(updated) => setActiveWorkspace(updated)}
+      />
+    );
+  }
+
+  // 3. ADMIN VIEW
+  if (view === 'admin') {
     return (
       <div className="min-h-screen bg-[#f8f9fe] text-[#191930] selection:bg-[#0c1df3] selection:text-white">
         <AdminDashboard
@@ -116,8 +338,6 @@ export default function App() {
           onPreviewProject={handlePreviewInTracker}
           onSettingsUpdated={loadSettings}
         />
-
-        {/* Project Tracker Modal for quick preview */}
         <ProjectTrackerModal
           isOpen={isTrackerOpen}
           initialProjectId={trackerInitialId}
@@ -127,10 +347,51 @@ export default function App() {
     );
   }
 
-  // Public Landing Page
+  // 4. AUTH PAGE
+  if (view === 'auth') {
+    return (
+      <div className="selection:bg-[#0c1df3] selection:text-white">
+        <AuthPage
+          onAuthSuccess={handleAuthSuccess}
+          onBackToSite={handleBackToSite}
+        />
+      </div>
+    );
+  }
+
+  // 5. USER DASHBOARD (PROTECTED)
+  if (view === 'dashboard') {
+    if (isCheckingAuth) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#f8f9fe]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-[#0c1df3] border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-[#757589] font-semibold">Memverifikasi sesi...</p>
+          </div>
+        </div>
+      );
+    }
+    if (!authToken || !authUser) {
+      setView('auth');
+      return null;
+    }
+    return (
+      <div className="selection:bg-[#0c1df3] selection:text-white">
+        <UserDashboard
+          user={authUser}
+          token={authToken}
+          onLogout={handleLogout}
+          onBackToSite={handleBackToSite}
+          onOpenBuilder={handleOpenBuilder}
+          onOpenAdmin={handleOpenAdmin}
+        />
+      </div>
+    );
+  }
+
+  // 6. PUBLIC LANDING PAGE (DEFAULT)
   return (
-    <div className="min-h-screen flex flex-col bg-[#fcf8ff] text-[#191930] selection:bg-[#0c1df3] selection:text-white">
-      {/* Sticky Top Bar */}
+    <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
       <Navbar
         onOpenTracker={() => {
           setTrackerInitialId('IVN-2025-FTUI');
@@ -139,10 +400,13 @@ export default function App() {
         onOpenConsultation={() => handleOpenConsultation()}
         onOpenProfile={() => setInfoModalType('profile')}
         onOpenAdmin={handleOpenAdmin}
+        onOpenDashboard={handleOpenDashboard}
+        isLoggedIn={!!(authToken && authUser)}
+        userName={authUser?.name}
       />
 
-      {/* Main Content Sections */}
-      <main className="w-full pt-20 bg-[#fcf8ff] flex-1">
+      <main className="w-full flex-1">
+        {/* Section 1 - Hero: Background Gambar 2 (hero-bg-grid.jpg) dengan Aceternity 3D Scroll Container */}
         <Hero
           onOpenConsultation={() => handleOpenConsultation()}
           onSelectCampus={() => {}}
@@ -150,35 +414,34 @@ export default function App() {
           totalActiveUsers={siteSettings.totalActiveUsers}
         />
 
+        {/* Section 2 - Pricing / Pilihan Model: Clean Light Theme */}
         <ServicesSection
           onSelectPlan={(planId) => handleOpenConsultation(planId)}
           prices={pricesForServices}
         />
 
+        {/* Section 3 - Features Bento Grid: Background Gambar 3 (section-bg-blue.jpg) */}
         <ComparisonSection />
 
+        {/* Section 4 - 3-Step Process & Testimonial Quote: Clean Light Theme */}
         <ProcessSection />
 
-        <FaqSection />
-
+        {/* Section 5 - Call to Action Banner */}
         <CtaSection
           onOpenConsultation={() => handleOpenConsultation()}
         />
       </main>
 
-      {/* Footer */}
       <Footer
         onOpenConsultation={() => handleOpenConsultation()}
         onOpenTerms={(type) => setInfoModalType(type)}
         onOpenAdmin={handleOpenAdmin}
       />
 
-      {/* Floating WhatsApp Action Pill */}
       <FloatingWhatsApp
         onOpenConsultation={() => handleOpenConsultation()}
       />
 
-      {/* Modals */}
       <ConsultationModal
         isOpen={isConsultationOpen}
         onClose={() => setIsConsultationOpen(false)}
