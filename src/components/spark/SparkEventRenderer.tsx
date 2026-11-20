@@ -16,9 +16,10 @@ import { ensureConfigBlocks } from '../../types/builder.ts';
 interface SparkEventRendererProps {
   config: EventConfig;
   isPreviewMode?: boolean;
+  slug?: string;
 }
 
-export default function SparkEventRenderer({ config }: SparkEventRendererProps) {
+export default function SparkEventRenderer({ config, isPreviewMode, slug }: SparkEventRendererProps) {
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -28,6 +29,41 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
   const themePrimary = config.theme?.primaryColor || '#1f2de6';
   const themeAccent = config.theme?.accentColor || '#3b47dc';
   const bgStyle = config.theme?.bgStyle || 'clean-white';
+
+  const isCustomDark = useMemo(() => {
+    if (bgStyle !== 'custom' || !config.theme?.bgColor) return false;
+    const hex = config.theme.bgColor.replace('#', '');
+    if (hex.length === 6) {
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return (0.299 * r + 0.587 * g + 0.114 * b) < 140;
+    }
+    return false;
+  }, [bgStyle, config.theme?.bgColor]);
+
+  const isDarkMode = bgStyle === 'dark-modern' || isCustomDark;
+
+  const rootBgStyle = useMemo<React.CSSProperties>(() => {
+    if (bgStyle === 'subtle-gradient') {
+      return {
+        background: `radial-gradient(ellipse at 50% -10%, ${themePrimary}20 0%, transparent 60%), linear-gradient(160deg, ${themePrimary}18 0%, #ffffff 40%, ${themeAccent}20 100%)`
+      };
+    }
+    if (bgStyle === 'custom') {
+      return {
+        backgroundColor: config.theme?.bgColor || '#f0f4f8'
+      };
+    }
+    if (bgStyle === 'dark-modern') {
+      return {
+        backgroundColor: '#090b11'
+      };
+    }
+    return {
+      backgroundColor: '#ffffff'
+    };
+  }, [bgStyle, config.theme?.bgColor, themePrimary, themeAccent]);
 
   const activePhase = useMemo(() => {
     if (!config.phases || config.phases.length === 0) return null;
@@ -42,19 +78,10 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
   }, [config, activePhase]);
   const activeBlocks = useMemo(() => blocks.filter((b) => b.enabled), [blocks]);
 
-  const isDarkMode = bgStyle === 'dark-modern';
-
   const bgContainerClass = useMemo(() => {
-    switch (bgStyle) {
-      case 'dark-modern':
-        return 'bg-[#0b0d14] text-white';
-      case 'subtle-gradient':
-        return 'text-[#191930]';
-      case 'clean-white':
-      default:
-        return 'bg-white text-[#191930]';
-    }
-  }, [bgStyle]);
+    if (isDarkMode) return 'text-white';
+    return 'text-[#191930]';
+  }, [isDarkMode]);
 
   const toggleFaq = (id: string) => {
     setOpenFaqId(openFaqId === id ? null : id);
@@ -64,14 +91,48 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
     setFormData((prev) => ({ ...prev, [fieldId]: val }));
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent, formBlockId?: string) => {
     e.preventDefault();
+    if (slug) {
+      try {
+        const targetBlock = blocks.find((b) => b.id === formBlockId) || modalFormBlock;
+        const targetSteps = targetBlock?.data?.steps || [];
+        const targetFields: FormFieldItem[] = targetSteps.flatMap((s: any) => s.fields || []);
+
+        const enrichedData: Record<string, any> = {
+          ...formData,
+          _formId: formBlockId || targetBlock?.id
+        };
+
+        targetFields.forEach((field) => {
+          if (field.label && formData[field.id] !== undefined) {
+            enrichedData[field.label] = formData[field.id];
+          }
+        });
+
+        let proofUrl = formData['proof'] || formData['bukti_pembayaran'] || formData['paymentProof'] || null;
+        let payEmail = formData['email'] || formData['email_konfirmasi'] || formData['paymentEmail'] || null;
+
+        Object.entries(formData).forEach(([k, v]) => {
+          if (k.startsWith('payment_proof_') && v) proofUrl = v;
+          if (k.startsWith('payment_email_') && v) payEmail = v;
+        });
+
+        await fetch(`/api/public/events/${encodeURIComponent(slug)}/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            formId: formBlockId || targetBlock?.id,
+            formData: enrichedData,
+            paymentProofUrl: proofUrl,
+            paymentEmail: payEmail
+          })
+        });
+      } catch (err) {
+        console.error('Failed to submit form to server:', err);
+      }
+    }
     setFormSubmitted(true);
-    setTimeout(() => {
-      setFormSubmitted(false);
-      setActiveFormStep(0);
-      setModalFormBlock(null);
-    }, 4000);
   };
 
   // Handle action button click (direct to block or modal)
@@ -86,6 +147,9 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
     if (btn.targetType === 'block' && btn.targetBlockId) {
       const targetBlock = blocks.find((b) => b.id === btn.targetBlockId);
       if (targetBlock && targetBlock.type === 'form') {
+        if (slug && !isPreviewMode) {
+          fetch(`/api/public/events/${encodeURIComponent(slug)}/track-start`, { method: 'POST' }).catch(() => {});
+        }
         const isModal = targetBlock.data?.openMode === 'new-page' || targetBlock.data?.hideFromMainPage;
         if (isModal) {
           setModalFormBlock(targetBlock);
@@ -103,17 +167,11 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
 
   return (
     <div
-      className={`w-full min-h-screen ${bgContainerClass} font-sans selection:bg-blue-600 selection:text-white transition-colors duration-300 relative overflow-x-hidden`}
-      style={
-        bgStyle === 'subtle-gradient'
-          ? {
-              background: `linear-gradient(145deg, ${themePrimary}18 0%, #ffffff 50%, ${themeAccent}18 100%)`
-            }
-          : undefined
-      }
+      className={`w-full min-h-screen ${bgContainerClass} font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 relative overflow-x-hidden`}
+      style={rootBgStyle}
     >
       {/* Top Header / Brand Bar */}
-      <header className={`sticky top-0 z-30 backdrop-blur-md border-b ${isDarkMode ? 'bg-[#0f111a]/85 border-white/10' : 'bg-white/90 border-slate-200/80'} transition-colors`}>
+      <header className={`sticky top-0 z-30 backdrop-blur-md border-b ${isDarkMode ? 'bg-[#0f111a]/85 border-white/10' : 'bg-white/85 border-slate-200/70'} transition-colors`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {config.logoUrl ? (
@@ -152,10 +210,12 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
       {/* SEQUENTIAL BLOCK RENDERING IN USER-DEFINED ORDER */}
       <main className="w-full">
         {activeBlocks.length === 0 ? (
-            <div className="min-h-[300px] flex items-center justify-center p-8 text-center text-slate-400 text-xs">
-              {/* Blank empty canvas when all blocks are removed */}
-            </div>
-            ) : (
+          <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center text-slate-400 text-xs">
+            <span className="material-symbols-outlined text-[36px] text-slate-300 mb-2">dashboard_customize</span>
+            <span className={`font-semibold ${isDarkMode ? 'text-white/60' : 'text-slate-500'}`}>Halaman Masih Kosong</span>
+            <span className="text-[11px] text-slate-400 mt-0.5">Tambahkan fitur baru dari panel sebelah kiri</span>
+          </div>
+        ) : (
           activeBlocks.map((block) => {
             switch (block.type) {
               // ─── 1. HERO BLOCK ─────────────────────────────────────────────
@@ -170,8 +230,16 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
                 const buttons: HeroButton[] = (data.buttons || []).filter((b: HeroButton) => b.enabled);
 
             return (
-            <section id={block.id} key={block.id} className="relative pt-12 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-6">
-              <div className="max-w-5xl mx-auto text-center flex flex-col items-center">
+            <section id={block.id} key={block.id} className="relative pt-12 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-6 overflow-hidden">
+              {/* Dynamic ambient background glow reflecting theme */}
+              <div className="absolute inset-0 pointer-events-none -z-0 overflow-hidden">
+                <div
+                  className="absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[360px] rounded-full blur-3xl opacity-25"
+                  style={{ background: `radial-gradient(circle, ${themePrimary} 0%, ${themeAccent} 100%)` }}
+                />
+              </div>
+
+              <div className="max-w-5xl mx-auto text-center flex flex-col items-center relative z-10">
                 {badgeText && (
                   <div
                     className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-extrabold tracking-wide mb-6 shadow-xs border ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-blue-50 border-blue-200 text-blue-700'
@@ -405,156 +473,305 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
 
             // ─── 4. FORMULIR PENDAFTARAN BLOCK (WITH MULTI-STEP & HIDE SUPPORT) ─────
             case 'form': {
-                const data = block.data || { };
+              const data = block.data || {};
 
-            // If user toggled "Sembunyikan form di halaman utama", skip rendering in main flow!
-            if (data.hideFromMainPage) {
-                  return null;
-                }
-
-            const steps: FormStep[] = data.steps || [
-            {
-              id: 'step-1',
-            title: 'Alur 1',
-            fields: [
-            {id: 'f-name', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama Anda' },
-            {id: 'f-email', label: 'Alamat Email', type: 'text', required: true, placeholder: 'email@domain.com' }
-            ]
-                  }
-            ];
-
-            const currentStepData = steps[activeFormStep] || steps[0];
-            const isFinalStep = activeFormStep === steps.length - 1;
-            const buttonText = data.buttonText || 'Kirim Pendaftaran';
-
-            return (
-            <section id={block.id} key={block.id} className={`py-14 sm:py-20 px-4 sm:px-6 border-t ${isDarkMode ? 'border-white/10' : 'border-slate-100'}`}>
-              <div className="max-w-2xl mx-auto">
-                <div className="text-center mb-8">
-                  <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                    {block.title || 'Formulir Pendaftaran'}
-                  </h2>
-                  {block.subtitle && (
-                    <p className={`text-xs sm:text-sm mt-1.5 ${isDarkMode ? 'text-white/60' : 'text-slate-500'}`}>
-                      {block.subtitle}
-                    </p>
-                  )}
-
-                  {/* Step indicator pills if multiple steps */}
-                  {steps.length > 1 && (
-                    <div className="flex items-center justify-center gap-2 mt-4">
-                      {steps.map((st, sIdx) => (
-                        <div
-                          key={st.id || sIdx}
-                          className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${sIdx === activeFormStep
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : sIdx < activeFormStep
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-slate-100 text-slate-500'
-                            }`}
-                        >
-                          {sIdx < activeFormStep ? `✓ ${st.title}` : `${sIdx + 1}. ${st.title}`}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className={`p-6 sm:p-8 rounded-2xl border shadow-xl ${isDarkMode ? 'bg-[#151928] border-white/10' : 'bg-white border-slate-200'}`}>
-                  {formSubmitted ? (
-                    <div className="text-center py-10 space-y-3">
-                      <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-2xl font-bold">
-                        ✓
-                      </div>
-                      <h3 className="font-bold text-lg text-slate-900">Pendaftaran Berhasil Dikirim!</h3>
-                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                        Terima kasih telah mendaftar. Tiket barcode dan informasi pelaksanaan kegiatan telah dikirimkan ke email terdaftar Anda.
-                      </p>
-                    </div>
-                  ) : (
-                    <form
-                      onSubmit={(e) => {
-                        if (!isFinalStep) {
-                          e.preventDefault();
-                          setActiveFormStep((prev) => prev + 1);
-                        } else {
-                          handleFormSubmit(e);
-                        }
-                      }}
-                      className="space-y-4"
-                    >
-                      {(currentStepData.fields || []).map((field: FormFieldItem) => (
-                        <div key={field.id} className="space-y-1 text-left">
-                          <label className={`block text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-slate-700'}`}>
-                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                          </label>
-
-                          {field.type === 'choice' ? (
-                            <select
-                              required={field.required}
-                              value={formData[field.id] || ''}
-                              onChange={(e) => handleInputChange(field.id, e.target.value)}
-                              className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition-colors ${isDarkMode
-                                ? 'bg-[#1a1f33] border-white/10 text-white focus:border-blue-500'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-blue-600'
-                                } focus:outline-none`}
-                            >
-                              <option value="">Pilih opsi...</option>
-                              {(field.options || ['Opsi 1', 'Opsi 2']).map((opt, oi) => (
-                                <option key={oi} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          ) : field.type === 'image' ? (
-                            <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-blue-500 bg-slate-50/50">
-                              <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
-                              <span className="block text-xs text-slate-600 font-medium mt-1">Upload Berkas Gambar (JPG, PNG)</span>
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              required={field.required}
-                              placeholder={field.placeholder || ''}
-                              value={formData[field.id] || ''}
-                              onChange={(e) => handleInputChange(field.id, e.target.value)}
-                              className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition-colors ${isDarkMode
-                                ? 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-blue-500'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600'
-                                } focus:outline-none`}
-                            />
-                          )}
-                        </div>
-                      ))}
-
-                      <div className="pt-2 flex items-center justify-between gap-3">
-                        {activeFormStep > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setActiveFormStep((prev) => prev - 1)}
-                            className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                          >
-                            ← Kembali
-                          </button>
-                        )}
-
-                        <button
-                          type="submit"
-                          className="flex-1 py-3 rounded-xl text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer"
-                          style={{
-                            background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})`
-                          }}
-                        >
-                          {isFinalStep ? buttonText : 'Lanjut ke Alur Berikutnya →'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-              </div>
-            </section>
-            );
+              // If user toggled "Sembunyikan form di halaman utama", skip rendering in main flow!
+              if (data.hideFromMainPage) {
+                return null;
               }
+
+              const steps: FormStep[] = data.steps || [
+                {
+                  id: 'step-1',
+                  title: 'Alur 1',
+                  fields: [
+                    { id: 'f-name', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama Anda' },
+                    { id: 'f-email', label: 'Alamat Email', type: 'text', required: true, placeholder: 'email@domain.com' }
+                  ]
+                }
+              ];
+
+              const currentStepData = steps[activeFormStep] || steps[0];
+              const isFinalStep = activeFormStep === steps.length - 1;
+              const buttonText = data.buttonText || 'Kirim Pendaftaran';
+              const isPaymentStep = currentStepData?.type === 'payment' || currentStepData?.payment?.enabled;
+              const paymentConfig = currentStepData?.payment;
+
+              return (
+                <section id={block.id} key={block.id} className={`py-14 sm:py-20 px-4 sm:px-6 border-t ${isDarkMode ? 'border-white/10' : 'border-slate-200/60'}`}>
+                  <div className="max-w-2xl mx-auto">
+                    <div className="text-center mb-8">
+                      <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                        {block.title || 'Formulir Pendaftaran'}
+                      </h2>
+                      {block.subtitle && (
+                        <p className={`text-xs sm:text-sm mt-1.5 ${isDarkMode ? 'text-white/60' : 'text-slate-500'}`}>
+                          {block.subtitle}
+                        </p>
+                      )}
+
+                      {/* Step indicator pills if multiple steps */}
+                      {steps.length > 1 && (
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          {steps.map((st, sIdx) => (
+                            <div
+                              key={st.id || sIdx}
+                              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                                sIdx === activeFormStep
+                                  ? 'text-white shadow-xs'
+                                  : sIdx < activeFormStep
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : isDarkMode ? 'bg-white/10 text-white/50' : 'bg-slate-100 text-slate-500'
+                              }`}
+                              style={sIdx === activeFormStep ? { backgroundColor: themePrimary } : {}}
+                            >
+                              {sIdx < activeFormStep ? `✓ ${st.title}` : `${sIdx + 1}. ${st.title}`}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`p-6 sm:p-8 rounded-2xl border shadow-xl ${isDarkMode ? 'bg-[#151928] border-white/10' : 'bg-white border-slate-200'}`}>
+                      {formSubmitted ? (
+                        <div className="text-center py-10 space-y-4 animate-scaleUp">
+                          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                            <span className="material-symbols-outlined text-[32px]">check_circle</span>
+                          </div>
+                          <div>
+                            <h3 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                              Form sudah di-submit
+                            </h3>
+                            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                              Data pendaftaran Anda telah berhasil terkirim.
+                            </p>
+                          </div>
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormSubmitted(false);
+                                setActiveFormStep(0);
+                              }}
+                              className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-50 text-slate-700 cursor-pointer transition-colors"
+                            >
+                              Kirim Formulir Baru
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <form
+                          onSubmit={(e) => {
+                            if (!isFinalStep) {
+                              e.preventDefault();
+                              setActiveFormStep((prev) => prev + 1);
+                            } else {
+                              handleFormSubmit(e, block.id);
+                            }
+                          }}
+                          className="space-y-4"
+                        >
+                          {/* JIKA ALUR PEMBAYARAN: TAMPILKAN RINCIAN PEMBAYARAN, QR CODE, BUKTI PEMBAYARAN, & EMAIL VERIFIKASI ACC */}
+                          {isPaymentStep && (
+                            <div className="space-y-4 pb-2 border-b border-slate-100">
+                              {/* Kotak Rincian Biaya */}
+                              <div className={`p-4 rounded-xl border text-center space-y-1.5 ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Biaya Pendaftaran</span>
+                                <span className="font-display font-black text-2xl sm:text-3xl block" style={{ color: themePrimary }}>
+                                  {paymentConfig?.price || 'Rp 50.000'}
+                                </span>
+                                {paymentConfig?.bankInfo && (
+                                  <p className={`text-xs font-semibold pt-1 ${isDarkMode ? 'text-white/80' : 'text-slate-700'}`}>
+                                    {paymentConfig.bankInfo}
+                                  </p>
+                                )}
+
+                                {/* QR Code Display */}
+                                {paymentConfig?.qrCodeUrl && (
+                                  <div className="pt-2">
+                                    <div className="inline-block p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs">
+                                      <img
+                                        src={paymentConfig.qrCodeUrl}
+                                        alt="QR Code Pembayaran"
+                                        className="w-40 h-40 object-contain rounded-lg mx-auto"
+                                      />
+                                      <span className="block text-[10px] font-semibold text-slate-400 mt-1.5">
+                                        Pindai QR Code untuk Pembayaran
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Upload Bukti Pembayaran */}
+                              <div className="space-y-1.5 text-left">
+                                <label className={`block text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-slate-700'}`}>
+                                  Upload Bukti Pembayaran <span className="text-red-500">*</span>
+                                </label>
+                                <div className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors relative ${
+                                  isDarkMode ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                }`}>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    required={!formData[`payment_proof_${currentStepData.id}`]}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (!f) return;
+                                      if (f.size > 5 * 1024 * 1024) {
+                                        alert('Ukuran berkas bukti pembayaran maksimal 5 MB.');
+                                        return;
+                                      }
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => {
+                                        handleInputChange(`payment_proof_${currentStepData.id}`, ev.target?.result as string);
+                                      };
+                                      reader.readAsDataURL(f);
+                                    }}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                  />
+                                  {formData[`payment_proof_${currentStepData.id}`] ? (
+                                    <div className="flex items-center justify-center gap-2 text-emerald-600 text-xs font-bold">
+                                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                      <span>Bukti Pembayaran Terpilih (Maks 5 MB)</span>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
+                                      <span className="block text-xs text-slate-600 font-bold">Upload Bukti Transfer / Pembayaran</span>
+                                      <span className="block text-[11px] text-slate-400">Maksimal ukuran 5 MB (JPG, PNG)</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Email Konfirmasi Verifikasi ACC */}
+                              <div className="space-y-1.5 text-left">
+                                <label className={`block text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-slate-700'}`}>
+                                  Email untuk Menerima Konfirmasi ACC <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="email"
+                                  required
+                                  placeholder="nama@email.com"
+                                  value={formData[`payment_email_${currentStepData.id}`] || ''}
+                                  onChange={(e) => handleInputChange(`payment_email_${currentStepData.id}`, e.target.value)}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition-colors ${
+                                    isDarkMode
+                                      ? 'bg-[#1a1f33] border-white/10 text-white placeholder-white/30 focus:border-blue-500'
+                                      : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600'
+                                  } focus:outline-none`}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Bidang Form Kustom */}
+                          {(currentStepData.fields || []).map((field: FormFieldItem) => (
+                            <div key={field.id} className="space-y-1 text-left">
+                              <label className={`block text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-slate-700'}`}>
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                              </label>
+
+                              {field.type === 'choice' ? (
+                                <select
+                                  required={field.required}
+                                  value={formData[field.id] || ''}
+                                  onChange={(e) => handleInputChange(field.id, e.target.value)}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition-colors ${isDarkMode
+                                    ? 'bg-[#1a1f33] border-white/10 text-white focus:border-blue-500'
+                                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-blue-600'
+                                    } focus:outline-none`}
+                                >
+                                  <option value="">Pilih opsi...</option>
+                                  {(field.options || ['Opsi 1', 'Opsi 2']).map((opt, oi) => (
+                                    <option key={oi} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : field.type === 'image' ? (
+                                <div className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors relative ${
+                                  isDarkMode ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                }`}>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    required={field.required && !formData[field.id]}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (!f) return;
+                                      if (f.size > 5 * 1024 * 1024) {
+                                        alert('Ukuran berkas maksimal 5 MB.');
+                                        return;
+                                      }
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => {
+                                        handleInputChange(field.id, ev.target?.result as string);
+                                      };
+                                      reader.readAsDataURL(f);
+                                    }}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                  />
+                                  {formData[field.id] ? (
+                                    <div className="flex items-center justify-center gap-2 text-emerald-600 text-xs font-bold">
+                                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                      <span>Berkas Terpilih (Maks 5 MB)</span>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
+                                      <span className="block text-xs text-slate-600 font-bold">{field.placeholder || 'Upload Berkas Gambar (Maks 5 MB)'}</span>
+                                      <span className="block text-[11px] text-slate-400">Klik untuk memilih berkas</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  required={field.required}
+                                  placeholder={field.placeholder || ''}
+                                  value={formData[field.id] || ''}
+                                  onChange={(e) => handleInputChange(field.id, e.target.value)}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs border transition-colors ${isDarkMode
+                                    ? 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-blue-500'
+                                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600'
+                                    } focus:outline-none`}
+                                />
+                              )}
+                            </div>
+                          ))}
+
+                          <div className="pt-2 flex items-center justify-between gap-3">
+                            {activeFormStep > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setActiveFormStep((prev) => prev - 1)}
+                                className={`px-4 py-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-colors ${
+                                  isDarkMode ? 'border-white/20 text-white/80 hover:bg-white/10' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                ← Kembali
+                              </button>
+                            )}
+
+                            <button
+                              type="submit"
+                              className="flex-1 py-3 rounded-xl text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer"
+                              style={{
+                                background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})`
+                              }}
+                            >
+                              {isFinalStep ? buttonText : 'Lanjut ke Alur Berikutnya →'}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            }
 
             // ─── 5. PRIZES BLOCK ───────────────────────────────────────────
             case 'prizes': {
@@ -821,17 +1038,11 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
       {/* ─── DEDICATED FULL-PAGE FORM VIEW (GANTI PAGE SAJA, BUKAN POPUP KECIL) ─── */}
       {modalFormBlock && (
         <div
-          className={`fixed inset-0 z-50 ${bgContainerClass} overflow-y-auto flex flex-col transition-colors duration-300 animate-fadeIn`}
-          style={
-            bgStyle === 'subtle-gradient'
-              ? {
-                  background: `linear-gradient(145deg, ${themePrimary}18 0%, #ffffff 50%, ${themeAccent}18 100%)`
-                }
-              : undefined
-          }
+          className={`fixed inset-0 z-50 ${bgContainerClass} overflow-y-auto flex flex-col transition-colors duration-200 animate-fadeIn`}
+          style={rootBgStyle}
         >
           {/* Header Bar */}
-          <header className={`sticky top-0 z-30 backdrop-blur-md border-b ${isDarkMode ? 'bg-[#0f111a]/85 border-white/10' : 'bg-white/90 border-slate-200/80'} px-4 sm:px-6 py-3.5 flex items-center justify-between`}>
+          <header className={`sticky top-0 z-30 backdrop-blur-md border-b ${isDarkMode ? 'bg-[#0f111a]/85 border-white/10' : 'bg-white/85 border-slate-200/70'} px-4 sm:px-6 py-3.5 flex items-center justify-between`}>
             <button
               type="button"
               onClick={() => {
@@ -857,16 +1068,18 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
           <div className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-8 flex flex-col justify-center">
             {formSubmitted ? (
               <div className="bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl text-center space-y-4 animate-scaleUp">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-3xl font-bold shadow-xs">
-                  ✓
+                <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                  <span className="material-symbols-outlined text-[36px]">check_circle</span>
                 </div>
-                <h3 className="font-display font-extrabold text-xl text-slate-900">
-                  Pendaftaran Berhasil Dikirim!
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-                  Terima kasih! Formulir pendaftaran dan berkas Anda telah berhasil kami terima.
-                </p>
-                <div className="pt-4">
+                <div>
+                  <h3 className="font-display font-extrabold text-xl text-slate-900">
+                    Form sudah di-submit
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto mt-1 leading-relaxed">
+                    Data dan berkas pendaftaran Anda telah berhasil terkirim.
+                  </p>
+                </div>
+                <div className="pt-4 flex items-center justify-center gap-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -874,7 +1087,7 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
                       setActiveFormStep(0);
                       setFormSubmitted(false);
                     }}
-                    className="px-6 py-2.5 rounded-full text-white text-xs font-bold shadow-md cursor-pointer transition-transform active:scale-95"
+                    className="px-6 py-2.5 rounded-xl text-white text-xs font-bold shadow-md cursor-pointer transition-transform active:scale-95"
                     style={{ background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})` }}
                   >
                     Kembali ke Halaman Acara
@@ -936,107 +1149,205 @@ export default function SparkEventRenderer({ config }: SparkEventRendererProps) 
                 )}
 
                 {/* FORM FIELDS */}
-                <form
-                  onSubmit={(e) => {
-                    const steps: FormStep[] = modalFormBlock.data?.steps || [];
-                    const isFinal = activeFormStep >= steps.length - 1;
-                    if (!isFinal) {
-                      e.preventDefault();
-                      setActiveFormStep((prev) => prev + 1);
-                    } else {
-                      handleFormSubmit(e);
-                    }
-                  }}
-                  className="space-y-4"
-                >
-                  <div className="space-y-3.5">
-                    {((modalFormBlock.data?.steps || [])[activeFormStep]?.fields || []).map((field: FormFieldItem) => (
-                      <div key={field.id} className="space-y-1.5 text-left">
-                        <label className="block text-xs font-bold text-slate-700">
-                          {field.label} {field.required && <span className="text-red-500">*</span>}
-                        </label>
-                        {field.type === 'choice' ? (
-                          <select
-                            required={field.required}
-                            value={formData[field.id] || ''}
-                            onChange={(e) => handleInputChange(field.id, e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:outline-none"
-                          >
-                            <option value="">Pilih salah satu opsi...</option>
-                            {(field.options || ['Opsi 1', 'Opsi 2']).map((opt, oi) => (
-                              <option key={oi} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        ) : field.type === 'image' ? (
-                          <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              required={field.required && !formData[field.id]}
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (!f) return;
-                                if (f.size > 5 * 1024 * 1024) {
-                                  alert('Ukuran file maksimal 5 MB.');
-                                  return;
-                                }
-                                const reader = new FileReader();
-                                reader.onload = (ev) => {
-                                  handleInputChange(field.id, ev.target?.result as string);
-                                };
-                                reader.readAsDataURL(f);
-                              }}
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                            />
-                            {formData[field.id] ? (
-                              <div className="flex items-center justify-center gap-2 text-emerald-600 text-xs font-bold">
-                                <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                <span>File Terpilih (Maks 5MB)</span>
-                              </div>
-                            ) : (
-                              <div className="space-y-1">
-                                <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
-                                <span className="block text-xs text-slate-600 font-bold">Upload Berkas / Gambar (Maks 5 MB)</span>
-                                <span className="block text-[11px] text-slate-400">Klik untuk memilih file</span>
+                {(() => {
+                  const modalSteps: FormStep[] = modalFormBlock.data?.steps || [];
+                  const currentModalStep = modalSteps[activeFormStep] || modalSteps[0];
+                  const isModalPayment = currentModalStep?.type === 'payment' || currentModalStep?.payment?.enabled;
+                  const modalPayment = currentModalStep?.payment;
+
+                  return (
+                    <form
+                      onSubmit={(e) => {
+                        const isFinal = activeFormStep >= modalSteps.length - 1;
+                        if (!isFinal) {
+                          e.preventDefault();
+                          setActiveFormStep((prev) => prev + 1);
+                        } else {
+                          handleFormSubmit(e, modalFormBlock?.id);
+                        }
+                      }}
+                      className="space-y-4"
+                    >
+                      {/* JIKA ALUR PEMBAYARAN */}
+                      {isModalPayment && (
+                        <div className="space-y-4 pb-2 border-b border-slate-100">
+                          {/* Kotak Rincian Biaya */}
+                          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-center space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Biaya Pendaftaran</span>
+                            <span className="font-display font-black text-2xl sm:text-3xl block text-slate-900" style={{ color: themePrimary }}>
+                              {modalPayment?.price || 'Rp 50.000'}
+                            </span>
+                            {modalPayment?.bankInfo && (
+                              <p className="text-xs font-semibold pt-1 text-slate-700">
+                                {modalPayment.bankInfo}
+                              </p>
+                            )}
+
+                            {/* QR Code Display */}
+                            {modalPayment?.qrCodeUrl && (
+                              <div className="pt-2">
+                                <div className="inline-block p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs">
+                                  <img
+                                    src={modalPayment.qrCodeUrl}
+                                    alt="QR Code Pembayaran"
+                                    className="w-44 h-44 object-contain rounded-lg mx-auto"
+                                  />
+                                  <span className="block text-[10px] font-semibold text-slate-400 mt-1.5">
+                                    Pindai QR Code untuk Pembayaran
+                                  </span>
+                                </div>
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <input
-                            type="text"
-                            required={field.required}
-                            placeholder={field.placeholder || ''}
-                            value={formData[field.id] || ''}
-                            onChange={(e) => handleInputChange(field.id, e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:outline-none"
-                          />
-                        )}
+
+                          {/* Upload Bukti Pembayaran */}
+                          <div className="space-y-1.5 text-left">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Upload Bukti Pembayaran <span className="text-red-500">*</span>
+                            </label>
+                            <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                required={!formData[`payment_proof_${currentModalStep.id}`]}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (!f) return;
+                                  if (f.size > 5 * 1024 * 1024) {
+                                    alert('Ukuran berkas bukti pembayaran maksimal 5 MB.');
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    handleInputChange(`payment_proof_${currentModalStep.id}`, ev.target?.result as string);
+                                  };
+                                  reader.readAsDataURL(f);
+                                }}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                              />
+                              {formData[`payment_proof_${currentModalStep.id}`] ? (
+                                <div className="flex items-center justify-center gap-2 text-emerald-600 text-xs font-bold">
+                                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                  <span>Bukti Pembayaran Terpilih (Maks 5 MB)</span>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
+                                  <span className="block text-xs text-slate-600 font-bold">Upload Bukti Transfer / Pembayaran</span>
+                                  <span className="block text-[11px] text-slate-400">Maksimal 5 MB (JPG, PNG)</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Email Konfirmasi Verifikasi ACC */}
+                          <div className="space-y-1.5 text-left">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Email untuk Menerima Konfirmasi ACC <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="email"
+                              required
+                              placeholder="nama@email.com"
+                              value={formData[`payment_email_${currentModalStep.id}`] || ''}
+                              onChange={(e) => handleInputChange(`payment_email_${currentModalStep.id}`, e.target.value)}
+                              className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Custom Fields */}
+                      <div className="space-y-3.5">
+                        {(currentModalStep?.fields || []).map((field: FormFieldItem) => (
+                          <div key={field.id} className="space-y-1.5 text-left">
+                            <label className="block text-xs font-bold text-slate-700">
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            {field.type === 'choice' ? (
+                              <select
+                                required={field.required}
+                                value={formData[field.id] || ''}
+                                onChange={(e) => handleInputChange(field.id, e.target.value)}
+                                className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:outline-none"
+                              >
+                                <option value="">Pilih salah satu opsi...</option>
+                                {(field.options || ['Opsi 1', 'Opsi 2']).map((opt, oi) => (
+                                  <option key={oi} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : field.type === 'image' ? (
+                              <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  required={field.required && !formData[field.id]}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (!f) return;
+                                    if (f.size > 5 * 1024 * 1024) {
+                                      alert('Ukuran berkas maksimal 5 MB.');
+                                      return;
+                                    }
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      handleInputChange(field.id, ev.target?.result as string);
+                                    };
+                                    reader.readAsDataURL(f);
+                                  }}
+                                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                />
+                                {formData[field.id] ? (
+                                  <div className="flex items-center justify-center gap-2 text-emerald-600 text-xs font-bold">
+                                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                    <span>Berkas Terpilih (Maks 5 MB)</span>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <span className="material-symbols-outlined text-[24px] text-slate-400">upload_file</span>
+                                    <span className="block text-xs text-slate-600 font-bold">{field.placeholder || 'Upload Berkas / Gambar (Maks 5 MB)'}</span>
+                                    <span className="block text-[11px] text-slate-400">Klik untuk memilih berkas</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                required={field.required}
+                                placeholder={field.placeholder || ''}
+                                value={formData[field.id] || ''}
+                                onChange={(e) => handleInputChange(field.id, e.target.value)}
+                                className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:outline-none"
+                              />
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-100">
-                    {activeFormStep > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveFormStep((prev) => prev - 1)}
-                        className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer transition-colors"
-                      >
-                        ← Alur Sebelumnya
-                      </button>
-                    )}
+                      <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-100">
+                        {activeFormStep > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveFormStep((prev) => prev - 1)}
+                            className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer transition-colors"
+                          >
+                            ← Alur Sebelumnya
+                          </button>
+                        )}
 
-                    <button
-                      type="submit"
-                      className="flex-1 py-3 rounded-xl text-white font-bold text-xs shadow-md transition-all cursor-pointer hover:opacity-95"
-                      style={{ background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})` }}
-                    >
-                      {activeFormStep >= (modalFormBlock.data?.steps?.length || 1) - 1
-                        ? (modalFormBlock.data?.buttonText || 'Kirim Pendaftaran')
-                        : 'Lanjut ke Alur Berikutnya →'}
-                    </button>
-                  </div>
-                </form>
+                        <button
+                          type="submit"
+                          className="flex-1 py-3 rounded-xl text-white font-bold text-xs shadow-md transition-all cursor-pointer hover:opacity-95"
+                          style={{ background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})` }}
+                        >
+                          {activeFormStep >= modalSteps.length - 1
+                            ? (modalFormBlock.data?.buttonText || 'Kirim Pendaftaran')
+                            : 'Lanjut ke Alur Berikutnya →'}
+                        </button>
+                      </div>
+                    </form>
+                  );
+                })()}
               </div>
             )}
           </div>

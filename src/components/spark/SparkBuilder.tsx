@@ -17,6 +17,7 @@ import type {
 import { getTemplateById, ensureConfigBlocks } from '../../types/builder.ts';
 import SparkEventRenderer from './SparkEventRenderer.tsx';
 import SparkSubscriptionModal from './SparkSubscriptionModal.tsx';
+import WorkspaceAnalyticsDashboard from './WorkspaceAnalyticsDashboard.tsx';
 import type { Workspace } from '../UserDashboard.tsx';
 
 interface SparkBuilderProps {
@@ -51,6 +52,56 @@ const BLOCK_TYPES_META: Record<EventBlockType, { label: string; icon: string; de
   contact: { label: 'Kontak Panitia', icon: 'contact_support', desc: 'Narahubung WhatsApp dan email' }
 };
 
+function FolderTab({
+  label,
+  active,
+  onClick
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const width = label === 'dashboard' ? 148 : 126;
+  const height = 38;
+  const slant = 12;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative inline-flex items-center justify-center cursor-pointer select-none transition-all ${active ? 'z-20' : 'z-10'
+        }`}
+      style={{
+        width: `${width}px`,
+        height: `${height}px`,
+        filter: active
+          ? 'drop-shadow(0 -3px 4px rgba(0, 0, 0, 0.08)) drop-shadow(-1px 0 2px rgba(0, 0, 0, 0.04)) drop-shadow(1px 0 2px rgba(0, 0, 0, 0.04))'
+          : 'none'
+      }}
+    >
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="absolute inset-0"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d={`M 0 ${height} L ${slant} 0 L ${width - slant} 0 L ${width} ${height} Z`}
+          fill={active ? '#ffffff' : '#e2e8f0'}
+        />
+      </svg>
+      <span
+        className={`relative z-10 text-sm font-black tracking-tight ${active ? 'text-slate-950 font-black' : 'text-slate-600 font-bold hover:text-slate-900'
+          }`}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 export default function SparkBuilder({
   workspace,
   token,
@@ -72,7 +123,8 @@ export default function SparkBuilder({
       parsed = {
         ...tmpl.defaultConfig,
         eventName: workspace.name || tmpl.defaultConfig.eventName,
-        description: workspace.description || tmpl.defaultConfig.description
+        description: workspace.description || tmpl.defaultConfig.description,
+        blocks: workspace.template_id && workspace.template_id !== 'blank' ? (tmpl.defaultConfig.blocks || []) : []
       };
     }
     return {
@@ -88,6 +140,7 @@ export default function SparkBuilder({
   });
 
   const [deviceViewport, setDeviceViewport] = useState<DeviceViewport>('desktop');
+  const [activeMainTab, setActiveMainTab] = useState<'canvas' | 'dashboard'>('canvas');
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -107,6 +160,7 @@ export default function SparkBuilder({
   const [subscriptionGateTitle, setSubscriptionGateTitle] = useState('');
   const [isUserSubscribed, setIsUserSubscribed] = useState(workspace.service_type === 'spark_pro' || false);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [addingStepBlockId, setAddingStepBlockId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -181,15 +235,6 @@ export default function SparkBuilder({
     }
   };
 
-  // Debounced auto-save
-  useEffect(() => {
-    if (!isDirty) return;
-    const timer = setTimeout(() => {
-      handleSaveDraft(false);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [config, isDirty]);
-
   // Publish API
   const handlePublish = async () => {
     setIsPublishing(true);
@@ -250,10 +295,9 @@ export default function SparkBuilder({
             updateConfig((prev) => ({
               ...prev,
               theme: {
-                ...prev.theme,
+                ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }),
                 primaryColor: primaryHex,
-                accentColor: accentHex,
-                bgStyle: 'subtle-gradient'
+                accentColor: accentHex
               }
             }));
             return;
@@ -265,14 +309,13 @@ export default function SparkBuilder({
       updateConfig((prev) => ({
         ...prev,
         theme: {
-          ...prev.theme,
+          ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }),
           primaryColor: '#0c1df3',
-          accentColor: '#3b47dc',
-          bgStyle: 'subtle-gradient'
+          accentColor: '#3b47dc'
         }
       }));
     };
-    img.onerror = () => {};
+    img.onerror = () => { };
     img.src = logoUrl;
   }, [updateConfig]);
 
@@ -697,16 +740,31 @@ export default function SparkBuilder({
   };
 
   // Add Form Step (Max 2 steps for free, 3 requires subscription)
-  const handleAddFormStep = (blockId: string, currentSteps: FormStep[]) => {
-    if (currentSteps.length >= 2) {
+  const handleAddFormStep = (
+    blockId: string,
+    currentSteps: FormStep[],
+    stepType: 'standard' | 'payment' = 'standard'
+  ) => {
+    if (currentSteps.length >= 2 && !isUserSubscribed) {
       setSubscriptionGateTitle('Batas Alur Bertahap Spark Free');
       setIsSubscriptionModalOpen(true);
       return;
     }
+    const isPayment = stepType === 'payment';
     const newStep: FormStep = {
       id: `step-${Date.now()}`,
-      title: `Alur ${currentSteps.length + 1}`,
-      fields: [
+      title: isPayment ? `Alur ${currentSteps.length + 1}: Pembayaran` : `Alur ${currentSteps.length + 1}`,
+      type: isPayment ? 'payment' : 'standard',
+      payment: isPayment
+        ? {
+          enabled: true,
+          price: 'Rp 50.000',
+          qrCodeUrl: '',
+          bankInfo: 'Transfer BCA 123456789 a.n Panitia Event',
+          verificationEmailRequired: true
+        }
+        : undefined,
+      fields: isPayment ? [] : [
         { id: `f-${Date.now()}`, label: 'Upload Berkas / Bukti', type: 'image', required: true }
       ]
     };
@@ -771,93 +829,113 @@ export default function SparkBuilder({
     });
   };
 
-  const publishedUrl = `${window.location.origin}/#event/${currentWs.slug || currentWs.id}`;
+  const publishedUrl = `${window.location.origin}/#event/${currentWs.slug || currentWs.id}${currentWs.status !== 'published' ? '?preview=true' : ''}`;
 
   return (
     <div className="h-screen flex flex-col bg-[#f0f2f5] text-slate-900 select-none font-sans overflow-hidden">
       {/* ─── GLOBAL TOP NAVIGATION ────────────────────────────────────────── */}
-      <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between gap-4 z-40 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={handleBackClick}
-            className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
-            title="Kembali ke Dashboard"
-          >
-            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          </button>
+      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 z-40 shrink-0 select-none">
+        {/* Row 1: Top Navigation Bar (Vertically centered) */}
+        <div className="h-16 flex items-center justify-between gap-4 py-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={handleBackClick}
+              className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
+              title="Kembali"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+            </button>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
-            <span className="font-semibold text-slate-800">Iventra Spark</span>
-            <span>/</span>
-            <span className="font-bold text-slate-900 truncate">{config.eventName || 'Untitled Event'}</span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+              <span className="font-semibold text-slate-800">Iventra Spark</span>
+              <span>/</span>
+              <span className="font-bold text-slate-900 truncate">{config.eventName || 'Untitled Event'}</span>
+            </div>
           </div>
+
+          {/* Viewport Switcher (centered vertically) */}
+          {activeMainTab === 'canvas' && (
+            <div className="hidden md:flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setDeviceViewport('desktop')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${deviceViewport === 'desktop' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">desktop_windows</span>
+                <span>Desktop</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeviceViewport('tablet')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${deviceViewport === 'tablet' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">tablet</span>
+                <span>Tablet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeviceViewport('mobile')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${deviceViewport === 'mobile' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">smartphone</span>
+                <span>Mobile</span>
+              </button>
+            </div>
+          )}
+
+          {/* Right Action Buttons */}
+          {activeMainTab === 'canvas' ? (
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleSaveDraft(true)}
+                disabled={isSaving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-800 transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">save</span>
+                <span>Simpan</span>
+              </button>
+
+              <a
+                href={publishedUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hidden lg:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <span>Preview ↗</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={openPublishModal}
+                disabled={isPublishing}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
+                <span>{isPublishing ? 'Meluncur...' : 'Publikasikan'}</span>
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        {/* Viewport Switcher */}
-        <div className="hidden md:flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs">
-          <button
-            type="button"
-            onClick={() => setDeviceViewport('desktop')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              deviceViewport === 'desktop' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">desktop_windows</span>
-            <span>Desktop</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeviceViewport('tablet')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              deviceViewport === 'tablet' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">tablet</span>
-            <span>Tablet</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeviceViewport('mobile')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              deviceViewport === 'mobile' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">smartphone</span>
-            <span>Mobile</span>
-          </button>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => handleSaveDraft(true)}
-            disabled={isSaving}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-800 transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">save</span>
-            <span>Simpan</span>
-          </button>
-
-          <a
-            href={publishedUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden lg:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            <span>Preview ↗</span>
-          </a>
-
-          <button
-            type="button"
-            onClick={openPublishModal}
-            disabled={isPublishing}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
-            <span>{isPublishing ? 'Meluncur...' : 'Publikasikan'}</span>
-          </button>
+        {/* Row 2: Folder Tabs (canvas vs dashboard) at Pojok Kiri Atas directly under 'Iventra Spark / ...' */}
+        <div className="flex items-end justify-start -mb-[1px]">
+          <div className="flex items-end -space-x-1.5">
+            <FolderTab
+              label="canvas"
+              active={activeMainTab === 'canvas'}
+              onClick={() => setActiveMainTab('canvas')}
+            />
+            <FolderTab
+              label="dashboard"
+              active={activeMainTab === 'dashboard'}
+              onClick={() => setActiveMainTab('dashboard')}
+            />
+          </div>
         </div>
       </header>
 
@@ -869,451 +947,1601 @@ export default function SparkBuilder({
       )}
 
       {/* ─── DUAL COLUMN WORKSPACE (INDEPENDENT SEPARATE SCROLLS) ───────────── */}
-      <div className="flex-1 flex overflow-hidden h-[calc(100vh-64px)]">
-        {/* ─── LEFT: GOOGLE FORMS STYLE EDITOR CANVAS (SCROLL 1) ─────────────── */}
-        <div className="w-full lg:w-[540px] xl:w-[600px] border-r border-slate-200 bg-[#f0f2f5] flex flex-col shrink-0 h-full overflow-y-auto p-4 sm:p-6 space-y-4 relative">
-          
-          {/* ─── CARD 1: PENGATURAN UMUM (ACCORDION DROPDOWN) ──────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setIsGeneralOpen(!isGeneralOpen)}
-              className="w-full min-h-[64px] p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-[20px] text-blue-600">tune</span>
-                </div>
-                <div>
-                  <h2 className="font-display font-bold text-sm text-slate-900 leading-snug">
-                    Pengaturan Umum
-                  </h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    {config.institutionName || 'Instansi'} • {config.eventName || 'Nama Event'}
-                  </p>
-                </div>
-              </div>
+      {activeMainTab === 'dashboard' ? (
+        <WorkspaceAnalyticsDashboard
+          key={`dashboard-${activeMainTab}`}
+          workspaceId={currentWs.id}
+          workspaceSlug={currentWs.slug || undefined}
+          workspaceName={config.eventName || currentWs.name}
+          config={config}
+          token={token}
+        />
+      ) : (
+        <div className="flex-1 flex overflow-hidden h-[calc(100vh-64px)]">
+          {/* ─── LEFT: GOOGLE FORMS STYLE EDITOR CANVAS (SCROLL 1) ─────────────── */}
+          <div className="w-full lg:w-[540px] xl:w-[600px] border-r border-slate-200 bg-[#f0f2f5] flex flex-col shrink-0 h-full overflow-y-auto p-4 sm:p-6 space-y-4 relative">
 
-              <span className={`material-symbols-outlined text-[20px] text-slate-400 transition-transform ${isGeneralOpen ? 'rotate-180' : ''}`}>
-                expand_more
-              </span>
-            </div>
-
-            {isGeneralOpen && (
-              <div className="p-5 pt-0 border-t border-slate-100 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Instansi / Penyelenggara
-                    </label>
-                    <input
-                      type="text"
-                      value={config.institutionName || ''}
-                      onChange={(e) => updateConfig((prev) => ({ ...prev, institutionName: e.target.value }))}
-                      placeholder="Contoh: BEM Fakultas Teknik"
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:border-blue-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nama Event
-                    </label>
-                    <input
-                      type="text"
-                      value={config.eventName || ''}
-                      onChange={(e) => updateConfig((prev) => ({ ...prev, eventName: e.target.value }))}
-                      placeholder="Contoh: National Tech Summit 2026"
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold focus:border-blue-600 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* LOGO */}
-                <div className="space-y-1">
-                  <label className="block font-semibold text-slate-700">Logo Event</label>
-                  <div className="flex items-center gap-3">
-                    {config.logoUrl ? (
-                      <img
-                        src={config.logoUrl}
-                        alt="Logo"
-                        className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
-                        <span className="material-symbols-outlined text-[18px]">image</span>
-                      </div>
-                    )}
-
-                    <input
-                      type="text"
-                      value={config.logoUrl || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updateConfig((prev) => ({ ...prev, logoUrl: val }));
-                        if (val) adaptThemeFromLogo(val);
-                      }}
-                      placeholder="Masukkan URL logo gambar (PNG / JPG)"
-                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono focus:border-blue-600 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* WARNA & LATAR BELAKANG */}
-                <div className="pt-2 border-t border-slate-100 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Warna Utama</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={config.theme?.primaryColor || '#0c1df3'}
-                          onChange={(e) => updateConfig((prev) => ({
-                            ...prev,
-                            theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), primaryColor: e.target.value }
-                          }))}
-                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5"
-                        />
-                        <input
-                          type="text"
-                          value={config.theme?.primaryColor || '#0c1df3'}
-                          onChange={(e) => updateConfig((prev) => ({
-                            ...prev,
-                            theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), primaryColor: e.target.value }
-                          }))}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Warna Aksen</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={config.theme?.accentColor || '#3b47dc'}
-                          onChange={(e) => updateConfig((prev) => ({
-                            ...prev,
-                            theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), accentColor: e.target.value }
-                          }))}
-                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5"
-                        />
-                        <input
-                          type="text"
-                          value={config.theme?.accentColor || '#3b47dc'}
-                          onChange={(e) => updateConfig((prev) => ({
-                            ...prev,
-                            theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), accentColor: e.target.value }
-                          }))}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3 OPSI LATAR BELAKANG */}
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1.5">Latar Belakang</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { id: 'clean-white', label: 'Putih' },
-                        { id: 'dark-modern', label: 'Hitam' },
-                        { id: 'subtle-gradient', label: 'Gradien' }
-                      ].map((style) => (
-                        <button
-                          key={style.id}
-                          type="button"
-                          onClick={() => updateConfig((prev) => ({
-                            ...prev,
-                            theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), bgStyle: style.id as any }
-                          }))}
-                          className={`py-2 px-2 rounded-lg border text-center text-xs transition-all cursor-pointer ${
-                            config.theme?.bgStyle === style.id
-                              ? 'border-blue-600 bg-blue-50 text-blue-700 font-bold shadow-2xs'
-                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-medium'
-                          }`}
-                        >
-                          {style.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ─── CARD 2: FASE & PENJADWALAN (TOGGLE SWITCH & ACCORDION) ───────── */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0">
-            <div className="w-full min-h-[64px] p-4 sm:p-5 flex items-center justify-between select-none">
+            {/* ─── CARD 1: PENGATURAN UMUM (ACCORDION DROPDOWN) ──────────────── */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0">
               <div
-                className="flex items-center gap-3 cursor-pointer flex-1"
-                onClick={() => {
-                  if (config.enablePhases) {
-                    setIsPhaseSectionOpen(!isPhaseSectionOpen);
-                  } else {
-                    handleToggleEnablePhases();
-                  }
-                }}
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsGeneralOpen(!isGeneralOpen)}
+                className="w-full min-h-[64px] p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors cursor-pointer select-none"
               >
-                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-[20px] text-blue-600">event_repeat</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-display font-bold text-sm text-slate-900 leading-snug">
-                      Penjadwalan Fase Website
-                    </h3>
-                    <span className="material-symbols-outlined text-[13px] text-amber-500" title="Fitur Pro">diamond</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[20px] text-blue-600">tune</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    {config.enablePhases ? `${activePhase.name} • ${isPhaseAutoActive(activePhase.scheduledDate) ? 'Aktif' : 'Terjadwal'}` : 'Nonaktif'}
-                  </p>
+                  <div>
+                    <h2 className="font-display font-bold text-sm text-slate-900 leading-snug">
+                      Pengaturan Umum
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {config.institutionName || 'Instansi'} • {config.eventName || 'Nama Event'}
+                    </p>
+                  </div>
                 </div>
+
+                <span className={`material-symbols-outlined text-[20px] text-slate-400 transition-transform ${isGeneralOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
               </div>
 
-              <div className="flex items-center gap-2.5">
-                {/* Switch Geser Kiri / Kanan Tanpa Teks dengan Indikator Diamond */}
-                <div className="relative">
-                  <div
-                    role="switch"
-                    aria-checked={Boolean(config.enablePhases)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleEnablePhases();
-                    }}
-                    className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer relative shrink-0 ${
-                      config.enablePhases ? 'bg-blue-600' : 'bg-slate-300'
-                    }`}
-                    title={config.enablePhases ? 'Nonaktifkan penjadwalan fase' : 'Aktifkan penjadwalan fase'}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                        config.enablePhases ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </div>
-                  <ProDiamondBadge />
-                </div>
-
-                {config.enablePhases && (
-                  <button
-                    type="button"
-                    onClick={() => setIsPhaseSectionOpen(!isPhaseSectionOpen)}
-                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 cursor-pointer"
-                  >
-                    <span className={`material-symbols-outlined text-[20px] transition-transform ${isPhaseSectionOpen ? 'rotate-180' : ''}`}>
-                      expand_more
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {config.enablePhases && isPhaseSectionOpen && (
-              <div className="p-5 pt-0 border-t border-slate-100 space-y-3.5 text-xs">
-                {/* Phase Selector Buttons */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-3">
-                  {currentPhases.map((ph, pIdx) => {
-                    const isSelected = activePhase.id === ph.id;
-                    return (
-                      <button
-                        key={ph.id || pIdx}
-                        type="button"
-                        onClick={() => handleSelectPhase(ph.id)}
-                        className={`px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-blue-600 bg-blue-600 text-white font-bold shadow-xs'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-medium'
-                        }`}
-                      >
-                        <span>{ph.name || `Fase ${pIdx + 1}`}</span>
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={handleAddPhase}
-                    className="px-2.5 py-1.5 rounded-lg border border-dashed border-blue-400 hover:bg-blue-50/50 text-blue-600 text-xs font-semibold whitespace-nowrap flex items-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">add</span>
-                    <span>Tambah Fase</span>
-                  </button>
-                </div>
-
-                {/* Active Phase Settings */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {isGeneralOpen && (
+                <div className="p-5 pt-0 border-t border-slate-100 space-y-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Nama Fase</label>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Instansi / Penyelenggara
+                      </label>
                       <input
                         type="text"
-                        value={activePhase.name || ''}
-                        onChange={(e) => handleUpdatePhase(activePhase.id, { name: e.target.value })}
-                        placeholder="Contoh: Fase 1: Pendaftaran"
-                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium"
+                        value={config.institutionName || ''}
+                        onChange={(e) => updateConfig((prev) => ({ ...prev, institutionName: e.target.value }))}
+                        placeholder="Contoh: BEM Fakultas Teknik"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:border-blue-600 focus:outline-none"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Tanggal Otomatis Aktif</label>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Nama Event
+                      </label>
                       <input
-                        type="date"
-                        value={activePhase.scheduledDate || ''}
-                        onChange={(e) => handleUpdatePhase(activePhase.id, { scheduledDate: e.target.value })}
-                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono cursor-pointer"
+                        type="text"
+                        value={config.eventName || ''}
+                        onChange={(e) => updateConfig((prev) => ({ ...prev, eventName: e.target.value }))}
+                        placeholder="Contoh: National Tech Summit 2026"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold focus:border-blue-600 focus:outline-none"
                       />
                     </div>
                   </div>
 
-                  {currentPhases.length > 1 && (
-                    <div className="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePhase(activePhase.id)}
-                        className="text-[11px] text-red-600 hover:text-red-700 font-medium flex items-center gap-1 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">delete</span>
-                        <span>Hapus Fase Ini</span>
-                      </button>
+                  {/* LOGO */}
+                  <div className="space-y-1">
+                    <label className="block font-semibold text-slate-700">Logo Event</label>
+                    <div className="flex items-center gap-3">
+                      {config.logoUrl ? (
+                        <img
+                          src={config.logoUrl}
+                          alt="Logo"
+                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
+                          <span className="material-symbols-outlined text-[18px]">image</span>
+                        </div>
+                      )}
+
+                      <input
+                        type="text"
+                        value={config.logoUrl || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateConfig((prev) => ({ ...prev, logoUrl: val }));
+                          if (val) adaptThemeFromLogo(val);
+                        }}
+                        placeholder="Masukkan URL logo gambar (PNG / JPG)"
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono focus:border-blue-600 focus:outline-none"
+                      />
                     </div>
+                  </div>
+
+                  {/* WARNA & LATAR BELAKANG */}
+                  <div className="pt-2 border-t border-slate-100 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">Warna Utama</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={config.theme?.primaryColor || '#0c1df3'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), primaryColor: e.target.value }
+                            }))}
+                            className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={config.theme?.primaryColor || '#0c1df3'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), primaryColor: e.target.value }
+                            }))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">Warna Aksen</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={config.theme?.accentColor || '#3b47dc'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), accentColor: e.target.value }
+                            }))}
+                            className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={config.theme?.accentColor || '#3b47dc'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: { ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }), accentColor: e.target.value }
+                            }))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* OPSI LATAR BELAKANG */}
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1.5">Latar Belakang</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'clean-white', label: 'Putih' },
+                          { id: 'dark-modern', label: 'Hitam' },
+                          { id: 'subtle-gradient', label: 'Gradien' },
+                          { id: 'custom', label: 'Kustom' }
+                        ].map((style) => (
+                          <button
+                            key={style.id}
+                            type="button"
+                            onClick={() => updateConfig((prev) => ({
+                              ...prev,
+                              theme: {
+                                ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'clean-white', fontFamily: 'sans' }),
+                                bgStyle: style.id as any,
+                                bgColor: prev.theme?.bgColor || (style.id === 'custom' ? '#f0f4f8' : undefined)
+                              }
+                            }))}
+                            className={`py-2 px-1 rounded-lg border text-center text-xs transition-all cursor-pointer ${config.theme?.bgStyle === style.id
+                              ? 'border-blue-600 bg-blue-50 text-blue-700 font-bold shadow-2xs'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-medium'
+                              }`}
+                          >
+                            {style.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Jika Kustom, tampilkan pemilih warna latar belakang */}
+                      {config.theme?.bgStyle === 'custom' && (
+                        <div className="mt-2.5 flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+                          <input
+                            type="color"
+                            value={config.theme?.bgColor || '#f0f4f8'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: {
+                                ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'custom', fontFamily: 'sans' }),
+                                bgColor: e.target.value
+                              }
+                            }))}
+                            className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5 shrink-0"
+                          />
+                          <input
+                            type="text"
+                            value={config.theme?.bgColor || '#f0f4f8'}
+                            onChange={(e) => updateConfig((prev) => ({
+                              ...prev,
+                              theme: {
+                                ...(prev.theme || { primaryColor: '#0c1df3', accentColor: '#3b47dc', bgStyle: 'custom', fontFamily: 'sans' }),
+                                bgColor: e.target.value
+                              }
+                            }))}
+                            placeholder="#f0f4f8"
+                            className="flex-1 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─── CARD 2: FASE & PENJADWALAN (TOGGLE SWITCH & ACCORDION) ───────── */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0">
+              <div className="w-full min-h-[64px] p-4 sm:p-5 flex items-center justify-between select-none">
+                <div
+                  className="flex items-center gap-3 cursor-pointer flex-1"
+                  onClick={() => {
+                    if (config.enablePhases) {
+                      setIsPhaseSectionOpen(!isPhaseSectionOpen);
+                    } else {
+                      handleToggleEnablePhases();
+                    }
+                  }}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[20px] text-blue-600">event_repeat</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-display font-bold text-sm text-slate-900 leading-snug">
+                        Penjadwalan Fase Website
+                      </h3>
+                      <span className="material-symbols-outlined text-[13px] text-amber-500" title="Fitur Pro">diamond</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {config.enablePhases ? `${activePhase.name} • ${isPhaseAutoActive(activePhase.scheduledDate) ? 'Aktif' : 'Terjadwal'}` : 'Nonaktif'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  {/* Switch Geser Kiri / Kanan Tanpa Teks dengan Indikator Diamond */}
+                  <div className="relative">
+                    <div
+                      role="switch"
+                      aria-checked={Boolean(config.enablePhases)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleEnablePhases();
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer relative shrink-0 ${config.enablePhases ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                      title={config.enablePhases ? 'Nonaktifkan penjadwalan fase' : 'Aktifkan penjadwalan fase'}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${config.enablePhases ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                      />
+                    </div>
+                    <ProDiamondBadge />
+                  </div>
+
+                  {config.enablePhases && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPhaseSectionOpen(!isPhaseSectionOpen)}
+                      className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 cursor-pointer"
+                    >
+                      <span className={`material-symbols-outlined text-[20px] transition-transform ${isPhaseSectionOpen ? 'rotate-180' : ''}`}>
+                        expand_more
+                      </span>
+                    </button>
                   )}
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* DYNAMIC SEQUENTIAL BLOCK CARDS */}
-          {currentBlocks.map((block, idx) => {
-            const isActive = activeBlockId === block.id;
+              {config.enablePhases && isPhaseSectionOpen && (
+                <div className="p-5 pt-0 border-t border-slate-100 space-y-3.5 text-xs">
+                  {/* Phase Selector Buttons */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-3">
+                    {currentPhases.map((ph, pIdx) => {
+                      const isSelected = activePhase.id === ph.id;
+                      return (
+                        <button
+                          key={ph.id || pIdx}
+                          type="button"
+                          onClick={() => handleSelectPhase(ph.id)}
+                          className={`px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${isSelected
+                            ? 'border-blue-600 bg-blue-600 text-white font-bold shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-medium'
+                            }`}
+                        >
+                          <span>{ph.name || `Fase ${pIdx + 1}`}</span>
+                        </button>
+                      );
+                    })}
 
-            return (
-              <div
-                key={block.id}
-                onClick={() => setActiveBlockId(block.id)}
-                className={`bg-white rounded-2xl border transition-all duration-200 shadow-sm relative shrink-0 ${
-                  isActive
-                    ? 'border-l-4 border-l-blue-600 border-slate-300 shadow-md ring-1 ring-blue-600/20'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                {/* Drag Handle Top Bar */}
-                <div className="pt-2 pb-1 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
-                  <span className="material-symbols-outlined text-[20px]">drag_indicator</span>
-                </div>
-
-                <div className="p-5 sm:p-6 space-y-4">
-                  {/* Card Header Row: Title & Subtitle + Type Dropdown */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex-1 space-y-1">
-                      <input
-                        type="text"
-                        value={block.title || ''}
-                        onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
-                        placeholder="Nama Komponen"
-                        className="w-full text-base font-display font-bold text-slate-900 border-b border-transparent hover:border-slate-200 focus:border-blue-600 focus:outline-none transition-colors pb-0.5"
-                      />
-                      <input
-                        type="text"
-                        value={block.subtitle || ''}
-                        onChange={(e) => handleUpdateBlock(block.id, { subtitle: e.target.value })}
-                        placeholder="Sub-judul / deskripsi bagian (opsional)"
-                        className="w-full text-xs text-slate-500 border-b border-transparent hover:border-slate-200 focus:border-blue-600 focus:outline-none transition-colors pb-0.5"
-                      />
-                    </div>
-
-                    <div className="relative shrink-0">
-                      <select
-                        value={block.type}
-                        onChange={(e) => handleChangeBlockType(block.id, e.target.value as EventBlockType)}
-                        className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-white focus:outline-none focus:border-blue-600 cursor-pointer"
-                      >
-                        {Object.entries(BLOCK_TYPES_META).map(([tKey, tMeta]) => (
-                          <option key={tKey} value={tKey}>
-                            {tMeta.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddPhase}
+                      className="px-2.5 py-1.5 rounded-lg border border-dashed border-blue-400 hover:bg-blue-50/50 text-blue-600 text-xs font-semibold whitespace-nowrap flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">add</span>
+                      <span>Tambah Fase</span>
+                    </button>
                   </div>
 
-                  {/* ─── IN-CARD CONFIGURATION ACCORDING TO TYPE ─────────────────── */}
-                  <div className="pt-2">
-                    {/* 1. HERO BLOCK OR STANDALONE BUTTONS BLOCK */}
-                    {(block.type === 'hero' || block.type === 'buttons') && (
-                      <div className="space-y-4 text-xs">
-                        {block.type === 'hero' && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="block text-slate-600 font-bold mb-1">Headline Acara</label>
-                              <input
-                                type="text"
-                                value={block.data?.headline || ''}
-                                onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, headline: e.target.value } })}
-                                placeholder="Judul besar headline"
-                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-slate-600 font-bold mb-1">Sub-headline / Tagline</label>
-                              <input
-                                type="text"
-                                value={block.data?.tagline || ''}
-                                onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, tagline: e.target.value } })}
-                                placeholder="Tagline atau penjelasan singkat acara"
-                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
-                              />
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
+                  {/* Active Phase Settings */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Nama Fase</label>
+                        <input
+                          type="text"
+                          value={activePhase.name || ''}
+                          onChange={(e) => handleUpdatePhase(activePhase.id, { name: e.target.value })}
+                          placeholder="Contoh: Fase 1: Pendaftaran"
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Tanggal Otomatis Aktif</label>
+                        <input
+                          type="date"
+                          value={activePhase.scheduledDate || ''}
+                          onChange={(e) => handleUpdatePhase(activePhase.id, { scheduledDate: e.target.value })}
+                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {currentPhases.length > 1 && (
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhase(activePhase.id)}
+                          className="text-[11px] text-red-600 hover:text-red-700 font-medium flex items-center gap-1 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">delete</span>
+                          <span>Hapus Fase Ini</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* EMPTY STATE PLACEHOLDER KETIKA SEMUA FITUR DIHAPUS / AWAL KOSONG */}
+            {currentBlocks.length === 0 && (
+              <div className="p-8 rounded-2xl border-2 border-dashed border-slate-200 bg-white/70 text-center space-y-2 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                  <span className="material-symbols-outlined text-[20px]">layers</span>
+                </div>
+                <p className="text-xs font-bold text-slate-700">Workspace Kosong</p>
+                <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                  Belum ada fitur pada website ini. Klik tombol Tambah Fitur Baru di bawah untuk mulai menyusun halaman.
+                </p>
+              </div>
+            )}
+
+            {/* DYNAMIC SEQUENTIAL BLOCK CARDS */}
+            {currentBlocks.map((block, idx) => {
+              const isActive = activeBlockId === block.id;
+
+              return (
+                <div
+                  key={block.id}
+                  onClick={() => setActiveBlockId(block.id)}
+                  className={`bg-white rounded-2xl border transition-all duration-200 shadow-sm relative shrink-0 ${isActive
+                    ? 'border-l-4 border-l-blue-600 border-slate-300 shadow-md ring-1 ring-blue-600/20'
+                    : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                >
+                  {/* Drag Handle Top Bar */}
+                  <div className="pt-2 pb-1 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
+                    <span className="material-symbols-outlined text-[20px]">drag_indicator</span>
+                  </div>
+
+                  <div className="p-5 sm:p-6 space-y-4">
+                    {/* Card Header Row: Title & Subtitle + Type Dropdown */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex-1 space-y-1">
+                        <input
+                          type="text"
+                          value={block.title || ''}
+                          onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
+                          placeholder="Nama Komponen"
+                          className="w-full text-base font-display font-bold text-slate-900 border-b border-transparent hover:border-slate-200 focus:border-blue-600 focus:outline-none transition-colors pb-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={block.subtitle || ''}
+                          onChange={(e) => handleUpdateBlock(block.id, { subtitle: e.target.value })}
+                          placeholder="Sub-judul / deskripsi bagian (opsional)"
+                          className="w-full text-xs text-slate-500 border-b border-transparent hover:border-slate-200 focus:border-blue-600 focus:outline-none transition-colors pb-0.5"
+                        />
+                      </div>
+
+                      <div className="relative shrink-0">
+                        <select
+                          value={block.type}
+                          onChange={(e) => handleChangeBlockType(block.id, e.target.value as EventBlockType)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-white focus:outline-none focus:border-blue-600 cursor-pointer"
+                        >
+                          {Object.entries(BLOCK_TYPES_META).map(([tKey, tMeta]) => (
+                            <option key={tKey} value={tKey}>
+                              {tMeta.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* ─── IN-CARD CONFIGURATION ACCORDING TO TYPE ─────────────────── */}
+                    <div className="pt-2">
+                      {/* 1. HERO BLOCK OR STANDALONE BUTTONS BLOCK */}
+                      {(block.type === 'hero' || block.type === 'buttons') && (
+                        <div className="space-y-4 text-xs">
+                          {block.type === 'hero' && (
+                            <div className="space-y-2">
                               <div>
-                                <label className="block text-slate-600 font-bold mb-1">Waktu Pelaksanaan</label>
+                                <label className="block text-slate-600 font-bold mb-1">Headline Acara</label>
                                 <input
                                   type="text"
-                                  value={block.data?.dateText || ''}
-                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, dateText: e.target.value } })}
-                                  placeholder="Contoh: 15-20 Nov 2026"
+                                  value={block.data?.headline || ''}
+                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, headline: e.target.value } })}
+                                  placeholder="Judul besar headline"
                                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
                                 />
                               </div>
                               <div>
-                                <label className="block text-slate-600 font-bold mb-1">Lokasi / Format</label>
+                                <label className="block text-slate-600 font-bold mb-1">Sub-headline / Tagline</label>
                                 <input
                                   type="text"
-                                  value={block.data?.locationText || ''}
-                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, locationText: e.target.value } })}
-                                  placeholder="Contoh: Jakarta / Online Zoom"
+                                  value={block.data?.tagline || ''}
+                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, tagline: e.target.value } })}
+                                  placeholder="Tagline atau penjelasan singkat acara"
                                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
                                 />
                               </div>
-                            </div>
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="block text-slate-600 font-bold text-xs">Poster / Banner Hero</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-slate-600 font-bold mb-1">Waktu Pelaksanaan</label>
+                                  <input
+                                    type="text"
+                                    value={block.data?.dateText || ''}
+                                    onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, dateText: e.target.value } })}
+                                    placeholder="Contoh: 15-20 Nov 2026"
+                                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-600 font-bold mb-1">Lokasi / Format</label>
+                                  <input
+                                    type="text"
+                                    value={block.data?.locationText || ''}
+                                    onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, locationText: e.target.value } })}
+                                    placeholder="Contoh: Jakarta / Online Zoom"
+                                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-slate-600 font-bold text-xs">Poster / Banner Hero</label>
+                                  {block.data?.bannerUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: '' } })}
+                                      className="text-[11px] text-red-600 hover:text-red-700 font-semibold cursor-pointer"
+                                    >
+                                      Hapus Gambar
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={block.data?.bannerUrl || ''}
+                                    onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: e.target.value } })}
+                                    placeholder="https://... (kosongkan jika tanpa gambar)"
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                                  />
+                                  <label className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0">
+                                    <span className="material-symbols-outlined text-[16px] text-blue-600">upload_file</span>
+                                    <span>Upload (Maks 5MB)</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="sr-only"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        if (file.size > 5 * 1024 * 1024) {
+                                          showToast('Ukuran gambar melebihi batas 5 MB.');
+                                          return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                          handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: ev.target?.result as string } });
+                                          showToast('Gambar hero berhasil diunggah!');
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }}
+                                    />
+                                  </label>
+                                </div>
                                 {block.data?.bannerUrl && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: '' } })}
-                                    className="text-[11px] text-red-600 hover:text-red-700 font-semibold cursor-pointer"
-                                  >
-                                    Hapus Gambar
-                                  </button>
+                                  <div className="mt-2 w-full h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
+                                    <img src={block.data.bannerUrl} alt="Preview" className="w-full h-full object-cover" />
+                                  </div>
                                 )}
                               </div>
+                            </div>
+                          )}
+
+                          {/* CONFIGURABLE ACTION BUTTONS SECTION */}
+                          <div className="pt-2 border-t border-slate-100 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                                Konfigurasi Tombol Aksi ({((block.data?.buttons || []) as HeroButton[]).length}/2)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddButtonToBlock(block.id, block.data?.buttons || [])}
+                                className="relative text-blue-600 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer pr-1"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">add</span>
+                                <span>Tambah Tombol</span>
+                                {((block.data?.buttons || []) as HeroButton[]).length >= 2 && <ProDiamondBadge />}
+                              </button>
+                            </div>
+
+                            <div className="space-y-2.5">
+                              {((block.data?.buttons || []) as HeroButton[]).map((btn, bIdx) => (
+                                <div key={btn.id || bIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    {/* Slider Toggle Switch Without Text (Only Left/Right) */}
+                                    <div className="flex items-center gap-2">
+                                      <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={btn.enabled}
+                                          onChange={(e) => {
+                                            const nextBtns = [...(block.data?.buttons || [])];
+                                            nextBtns[bIdx].enabled = e.target.checked;
+                                            handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
+                                          }}
+                                          className="sr-only peer"
+                                        />
+                                        <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                                      </label>
+                                      <span className="font-bold text-slate-800 text-xs">Tombol #{bIdx + 1}</span>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextBtns = (block.data?.buttons || []).filter((_: any, i: number) => i !== bIdx);
+                                        handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
+                                      }}
+                                      className="text-slate-400 hover:text-red-600"
+                                      title="Hapus tombol"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">close</span>
+                                    </button>
+                                  </div>
+
+                                  {btn.enabled && (
+                                    <div className="space-y-2 pt-1 border-t border-slate-200/60">
+                                      {/* Label Input */}
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Nama Tombol</label>
+                                        <input
+                                          type="text"
+                                          value={btn.label}
+                                          onChange={(e) => {
+                                            const nextBtns = [...(block.data?.buttons || [])];
+                                            nextBtns[bIdx].label = e.target.value;
+                                            handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
+                                          }}
+                                          placeholder="Contoh: Daftar Sekarang"
+                                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
+                                        />
+                                      </div>
+
+                                      {/* Target Dropdown */}
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Tujuan Direct Tombol</label>
+                                        <select
+                                          value={btn.targetType === 'url' ? 'custom-url' : btn.targetBlockId || ''}
+                                          onChange={(e) => {
+                                            const nextBtns = [...(block.data?.buttons || [])];
+                                            const val = e.target.value;
+                                            if (val === 'custom-url') {
+                                              nextBtns[bIdx].targetType = 'url';
+                                              nextBtns[bIdx].targetBlockId = '';
+                                            } else {
+                                              nextBtns[bIdx].targetType = 'block';
+                                              nextBtns[bIdx].targetBlockId = val;
+                                            }
+                                            handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
+                                          }}
+                                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs cursor-pointer"
+                                        >
+                                          <option value="">-- Pilih Tujuan Direct --</option>
+                                          {currentBlocks
+                                            .filter((b) => b.id !== block.id)
+                                            .map((otherBlock) => (
+                                              <option key={otherBlock.id} value={otherBlock.id}>
+                                                Arahkan ke: {otherBlock.title} ({BLOCK_TYPES_META[otherBlock.type]?.label || otherBlock.type})
+                                              </option>
+                                            ))}
+                                          <option value="custom-url">Tautan URL Eksternal (https://...)</option>
+                                        </select>
+                                      </div>
+
+                                      {btn.targetType === 'url' && (
+                                        <div>
+                                          <input
+                                            type="text"
+                                            value={btn.url || ''}
+                                            onChange={(e) => {
+                                              const nextBtns = [...(block.data?.buttons || [])];
+                                              nextBtns[bIdx].url = e.target.value;
+                                              handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
+                                            }}
+                                            placeholder="https://example.com/daftar"
+                                            className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. FORM BLOCK WITH MULTI-STEP, 3 FIELD CHOICES & HIDE TOGGLE */}
+                      {block.type === 'form' && (
+                        <div className="space-y-4">
+                          {/* Form Settings: Open Mode & Hide on main page - ONLY VISIBLE WHEN DIRECT BUTTON EXISTS */}
+                          {isBlockTargetedByAnyButton(block.id) && (
+                            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                              {/* Open Mode dropdown */}
+                              <div>
+                                <label className="block text-slate-800 font-bold mb-1">Mode Pembukaan Formulir</label>
+                                <select
+                                  value={block.data?.openMode || 'same-page'}
+                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, openMode: e.target.value } })}
+                                  className="w-full bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer"
+                                >
+                                  <option value="same-page">Tampilkan di Halaman Ini</option>
+                                  <option value="new-page">Buka di Halaman Terpisah</option>
+                                </select>
+                              </div>
+
+                              {/* Hide Form Toggle */}
+                              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                                <span className="font-bold text-slate-800">Sembunyikan dari Halaman Utama</span>
+
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!block.data?.hideFromMainPage}
+                                    onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, hideFromMainPage: e.target.checked } })}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Steps (Alur Formulir) */}
+                          <div className="space-y-4">
+                            {((block.data?.steps || []) as FormStep[]).map((step, sIdx) => {
+                              const isPayment = step.type === 'payment' || step.payment?.enabled;
+
+                              return (
+                                <div key={step.id || sIdx} className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${isPayment ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                                        }`}>
+                                        {sIdx + 1}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={step.title}
+                                        onChange={(e) => {
+                                          const nextSteps = [...(block.data.steps || [])];
+                                          nextSteps[sIdx].title = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                        }}
+                                        className="font-bold text-xs text-slate-900 border-b border-transparent hover:border-slate-300 focus:outline-none flex-1 truncate"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {/* Toggle Alur Pembayaran */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const nextSteps = [...(block.data.steps || [])];
+                                          const willBePayment = !isPayment;
+                                          nextSteps[sIdx].type = willBePayment ? 'payment' : 'standard';
+                                          nextSteps[sIdx].payment = {
+                                            enabled: willBePayment,
+                                            price: nextSteps[sIdx].payment?.price || 'Rp 50.000',
+                                            qrCodeUrl: nextSteps[sIdx].payment?.qrCodeUrl || '',
+                                            bankInfo: nextSteps[sIdx].payment?.bankInfo || 'Transfer BCA 123456789 a.n Panitia Event',
+                                            verificationEmailRequired: true
+                                          };
+                                          handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${isPayment
+                                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                          }`}
+                                        title="Jadikan Alur Pembayaran"
+                                      >
+                                        <span className="material-symbols-outlined text-[14px]">qr_code_2</span>
+                                        <span>Alur Pembayaran</span>
+                                      </button>
+
+                                      {sIdx > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextSteps = (block.data.steps || []).filter((_: any, i: number) => i !== sIdx);
+                                            handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                          }}
+                                          className="text-slate-400 hover:text-red-600 text-xs font-bold cursor-pointer"
+                                        >
+                                          Hapus
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* PENGATURAN ALUR PEMBAYARAN: HARGA, QR CODE, REKENING */}
+                                  {isPayment && (
+                                    <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-3 text-xs">
+                                      <div className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
+                                        <span className="material-symbols-outlined text-[16px] text-emerald-700">payments</span>
+                                        <span>Rincian Pembayaran Pendaftaran</span>
+                                      </div>
+
+                                      {/* Harga / Biaya Pendaftaran */}
+                                      <div>
+                                        <label className="block text-slate-700 font-bold mb-1">Harga / Biaya Pendaftaran</label>
+                                        <input
+                                          type="text"
+                                          value={step.payment?.price || ''}
+                                          onChange={(e) => {
+                                            const nextSteps = [...(block.data.steps || [])];
+                                            nextSteps[sIdx].payment = {
+                                              ...(nextSteps[sIdx].payment || { enabled: true }),
+                                              price: e.target.value
+                                            };
+                                            handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                          }}
+                                          placeholder="Contoh: Rp 50.000"
+                                          className="w-full bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold focus:border-emerald-600 focus:outline-none"
+                                        />
+                                      </div>
+
+                                      {/* QR Code Pembayaran (QRIS) */}
+                                      <div>
+                                        <label className="block text-slate-700 font-bold mb-1">QR Code Pembayaran</label>
+                                        <div className="flex items-center gap-2">
+                                          {step.payment?.qrCodeUrl && (
+                                            <img
+                                              src={step.payment.qrCodeUrl}
+                                              alt="QR"
+                                              className="w-9 h-9 object-contain rounded-lg border border-slate-200 bg-white shrink-0"
+                                            />
+                                          )}
+                                          <input
+                                            type="text"
+                                            value={step.payment?.qrCodeUrl || ''}
+                                            onChange={(e) => {
+                                              const nextSteps = [...(block.data.steps || [])];
+                                              nextSteps[sIdx].payment = {
+                                                ...(nextSteps[sIdx].payment || { enabled: true }),
+                                                qrCodeUrl: e.target.value
+                                              };
+                                              handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                            }}
+                                            placeholder="URL QR Code / upload"
+                                            className="flex-1 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:border-emerald-600 focus:outline-none font-mono"
+                                          />
+
+                                          <label className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer flex items-center gap-1 transition-colors">
+                                            <span className="material-symbols-outlined text-[15px]">upload</span>
+                                            <span>Upload</span>
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                if (file.size > 5 * 1024 * 1024) {
+                                                  showToast('Ukuran QR Code maksimal 5 MB');
+                                                  return;
+                                                }
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => {
+                                                  const nextSteps = [...(block.data.steps || [])];
+                                                  nextSteps[sIdx].payment = {
+                                                    ...(nextSteps[sIdx].payment || { enabled: true }),
+                                                    qrCodeUrl: ev.target?.result as string
+                                                  };
+                                                  handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                                };
+                                                reader.readAsDataURL(file);
+                                              }}
+                                            />
+                                          </label>
+
+                                          {step.payment?.qrCodeUrl && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const nextSteps = [...(block.data.steps || [])];
+                                                nextSteps[sIdx].payment = {
+                                                  ...(nextSteps[sIdx].payment || { enabled: true }),
+                                                  qrCodeUrl: ''
+                                                };
+                                                handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                              }}
+                                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg shrink-0 cursor-pointer"
+                                              title="Hapus QR Code"
+                                            >
+                                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Info Rekening / Petunjuk Transfer (Opsional) */}
+                                      <div>
+                                        <label className="block text-slate-700 font-bold mb-1">Info Rekening / Petunjuk (Opsional)</label>
+                                        <input
+                                          type="text"
+                                          value={step.payment?.bankInfo || ''}
+                                          onChange={(e) => {
+                                            const nextSteps = [...(block.data.steps || [])];
+                                            nextSteps[sIdx].payment = {
+                                              ...(nextSteps[sIdx].payment || { enabled: true }),
+                                              bankInfo: e.target.value
+                                            };
+                                            handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                          }}
+                                          placeholder="Contoh: BCA 123456789 a.n Panitia"
+                                          className="w-full bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:border-emerald-600 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Fields within this step */}
+                                  <div className="space-y-2">
+                                    {(step.fields || []).map((field, fIdx) => (
+                                      <div key={field.id || fIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <input
+                                            type="text"
+                                            value={field.label}
+                                            onChange={(e) => {
+                                              const nextSteps = [...(block.data.steps || [])];
+                                              nextSteps[sIdx].fields[fIdx].label = e.target.value;
+                                              handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                            }}
+                                            className="w-full bg-white px-2.5 py-1 rounded-md border border-slate-200 font-semibold"
+                                          />
+
+                                          <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold uppercase shrink-0">
+                                            {field.type === 'text' ? 'Teks' : field.type === 'image' ? 'Gambar' : 'Pilihan'}
+                                          </span>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const nextSteps = [...(block.data.steps || [])];
+                                              nextSteps[sIdx].fields = nextSteps[sIdx].fields.filter((_: any, i: number) => i !== fIdx);
+                                              handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                            }}
+                                            className="text-slate-400 hover:text-red-600 p-1"
+                                          >
+                                            <span className="material-symbols-outlined text-[15px]">close</span>
+                                          </button>
+                                        </div>
+
+                                        {/* Choice options editor */}
+                                        {field.type === 'choice' && (
+                                          <div className="space-y-1 pt-1 border-t border-slate-200">
+                                            <div className="text-[10px] font-bold text-slate-500">Daftar Pilihan (Pisahkan dengan koma):</div>
+                                            <input
+                                              type="text"
+                                              value={(field.options || []).join(', ')}
+                                              onChange={(e) => {
+                                                const nextSteps = [...(block.data.steps || [])];
+                                                nextSteps[sIdx].fields[fIdx].options = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+                                                handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                              }}
+                                              placeholder="Opsi 1, Opsi 2, Opsi 3"
+                                              className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs"
+                                            />
+                                          </div>
+                                        )}
+
+                                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                                          <input
+                                            type="text"
+                                            value={field.placeholder || ''}
+                                            onChange={(e) => {
+                                              const nextSteps = [...(block.data.steps || [])];
+                                              nextSteps[sIdx].fields[fIdx].placeholder = e.target.value;
+                                              handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                            }}
+                                            placeholder="Placeholder..."
+                                            className="bg-transparent text-[11px] flex-1 focus:outline-none"
+                                          />
+
+                                          <label className="flex items-center gap-1.5 cursor-pointer ml-3">
+                                            <span>Wajib</span>
+                                            <input
+                                              type="checkbox"
+                                              checked={field.required}
+                                              onChange={(e) => {
+                                                const nextSteps = [...(block.data.steps || [])];
+                                                nextSteps[sIdx].fields[fIdx].required = e.target.checked;
+                                                handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
+                                              }}
+                                              className="rounded text-blue-600"
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* 3 Clear Options to Add Column/Field: Teks, Gambar, Pilihan */}
+                                  <div className="pt-2 border-t border-slate-100">
+                                    <div className="text-[10px] font-bold uppercase text-slate-400 mb-1.5">Tambah Kolom Form:</div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddFieldToStep(block.id, sIdx, 'text')}
+                                        className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                      >
+                                        <span className="material-symbols-outlined text-[15px] text-blue-600">notes</span>
+                                        <span>Teks</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddFieldToStep(block.id, sIdx, 'image')}
+                                        className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                      >
+                                        <span className="material-symbols-outlined text-[15px] text-blue-600">image</span>
+                                        <span>Gambar</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddFieldToStep(block.id, sIdx, 'choice')}
+                                        className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                      >
+                                        <span className="material-symbols-outlined text-[15px] text-blue-600">list</span>
+                                        <span>Pilihan</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Button to Add Alur (with Choice: Form Biasa / Pembayaran) */}
+                          {addingStepBlockId === block.id ? (
+                            <div className="p-3 bg-slate-50 rounded-xl border border-blue-200 shadow-xs space-y-2.5 animate-fadeIn">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                                <span>Pilih Jenis Alur Baru:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setAddingStepBlockId(null)}
+                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">close</span>
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Opsi 1: Form Biasa */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAddFormStep(block.id, block.data?.steps || [], 'standard');
+                                    setAddingStepBlockId(null);
+                                  }}
+                                  className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-500 hover:bg-blue-50/50 text-left transition-colors cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-1.5 text-blue-600 font-bold text-xs mb-0.5">
+                                    <span className="material-symbols-outlined text-[16px]">description</span>
+                                    <span>Formulir Biasa</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500">
+                                    Kolom teks, pilihan, berkas
+                                  </p>
+                                </button>
+
+                                {/* Opsi 2: Alur Pembayaran */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAddFormStep(block.id, block.data?.steps || [], 'payment');
+                                    setAddingStepBlockId(null);
+                                  }}
+                                  className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-emerald-500 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs mb-0.5">
+                                    <span className="material-symbols-outlined text-[16px]">qr_code_2</span>
+                                    <span>Alur Pembayaran</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500">
+                                    Harga, QRIS, bukti bayar
+                                  </p>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (((block.data?.steps || []) as FormStep[]).length >= 2 && !isUserSubscribed) {
+                                    setSubscriptionGateTitle('Batas Alur Bertahap Spark Free');
+                                    setIsSubscriptionModalOpen(true);
+                                    return;
+                                  }
+                                  setAddingStepBlockId(block.id);
+                                }}
+                                className="w-full py-2.5 rounded-xl border border-dashed border-blue-400 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                                <span>
+                                  {(block.data?.steps || []).length < 2
+                                    ? '+ Tambah Alur ke-2'
+                                    : `+ Tambah Alur ke-${((block.data?.steps || []) as FormStep[]).length + 1}`}
+                                </span>
+                              </button>
+                              {((block.data?.steps || []) as FormStep[]).length >= 2 && <ProDiamondBadge />}
+                            </div>
+                          )}
+
+                          {/* Submit Button Text */}
+                          <div className="pt-2 border-t border-slate-100">
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Teks Tombol Submit</label>
+                            <input
+                              type="text"
+                              value={block.data?.buttonText || 'Kirim Pendaftaran'}
+                              onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, buttonText: e.target.value } })}
+                              placeholder="Contoh: Kirim Pendaftaran"
+                              className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. TIMELINE BLOCK */}
+                      {block.type === 'timeline' && (
+                        <div className="space-y-3">
+                          <div className="space-y-2.5">
+                            {((block.data?.items as TimelineItem[]) || []).map((stage, sIdx) => (
+                              <div key={stage.id || sIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-bold text-slate-700 text-xs">Tahapan #{sIdx + 1}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextStages = block.data.items.filter((_: any, i: number) => i !== sIdx);
+                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
+                                    }}
+                                    className="text-slate-400 hover:text-red-600 transition-colors"
+                                    title="Hapus"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Tahapan</label>
+                                    <input
+                                      type="text"
+                                      value={stage.name || ''}
+                                      onChange={(e) => {
+                                        const nextStages = [...block.data.items];
+                                        nextStages[sIdx].name = e.target.value;
+                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
+                                      }}
+                                      placeholder="Contoh: Registrasi Peserta"
+                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Tanggal Mulai</label>
+                                      <input
+                                        type="text"
+                                        value={stage.startDate || ''}
+                                        onChange={(e) => {
+                                          const nextStages = [...block.data.items];
+                                          nextStages[sIdx].startDate = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
+                                        }}
+                                        placeholder="01 Nov"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Tanggal Selesai</label>
+                                      <input
+                                        type="text"
+                                        value={stage.endDate || ''}
+                                        onChange={(e) => {
+                                          const nextStages = [...block.data.items];
+                                          nextStages[sIdx].endDate = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
+                                        }}
+                                        placeholder="15 Nov"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Keterangan / Deskripsi</label>
+                                    <input
+                                      type="text"
+                                      value={stage.description || ''}
+                                      onChange={(e) => {
+                                        const nextStages = [...block.data.items];
+                                        nextStages[sIdx].description = e.target.value;
+                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
+                                      }}
+                                      placeholder="Penjelasan tahapan kegiatan..."
+                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newStage: TimelineItem = {
+                                id: `t-${Date.now()}`,
+                                name: 'Tahapan Baru',
+                                description: '',
+                                startDate: '10 Nov',
+                                endDate: '15 Nov',
+                                order: (block.data.items || []).length + 1,
+                                status: 'upcoming'
+                              };
+                              handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newStage] } });
+                            }}
+                            className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">add</span>
+                            <span>Tambah Tahapan Timeline</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 4. TEXT BLOCK */}
+                      {block.type === 'text' && (
+                        <div className="space-y-2">
+                          <textarea
+                            value={block.data?.content || ''}
+                            onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, content: e.target.value } })}
+                            rows={4}
+                            placeholder="Ketik teks penjelasan atau aturan..."
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 resize-none leading-relaxed"
+                          />
+                        </div>
+                      )}
+
+                      {/* 5. PRIZES BLOCK */}
+                      {block.type === 'prizes' && (
+                        <div className="space-y-3">
+                          <div className="space-y-2.5">
+                            {((block.data?.items as CategoryItem[]) || []).map((pz, pzIdx) => (
+                              <div key={pz.id || pzIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-bold text-slate-700 text-xs">Kategori Hadiah #{pzIdx + 1}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextPz = block.data.items.filter((_: any, i: number) => i !== pzIdx);
+                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
+                                    }}
+                                    className="text-slate-400 hover:text-red-600 transition-colors"
+                                    title="Hapus"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Juara / Kategori</label>
+                                      <input
+                                        type="text"
+                                        value={pz.title || ''}
+                                        onChange={(e) => {
+                                          const nextPz = [...block.data.items];
+                                          nextPz[pzIdx].title = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
+                                        }}
+                                        placeholder="Contoh: Juara 1"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nominal Hadiah</label>
+                                      <input
+                                        type="text"
+                                        value={pz.prizePool || ''}
+                                        onChange={(e) => {
+                                          const nextPz = [...block.data.items];
+                                          nextPz[pzIdx].prizePool = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
+                                        }}
+                                        placeholder="Rp 10.000.000"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-blue-600 font-bold"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Label Badge</label>
+                                      <input
+                                        type="text"
+                                        value={pz.badge || ''}
+                                        onChange={(e) => {
+                                          const nextPz = [...block.data.items];
+                                          nextPz[pzIdx].badge = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
+                                        }}
+                                        placeholder="Contoh: Juara Utama"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Keterangan / Fasilitas</label>
+                                      <input
+                                        type="text"
+                                        value={pz.description || ''}
+                                        onChange={(e) => {
+                                          const nextPz = [...block.data.items];
+                                          nextPz[pzIdx].description = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
+                                        }}
+                                        placeholder="Piala + Piagam + Mentoring"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPz: CategoryItem = {
+                                id: `pz-${Date.now()}`,
+                                title: `Juara ${(block.data.items || []).length + 1}`,
+                                targetAudience: '',
+                                description: 'Uang tunai + Sertifikat',
+                                prizePool: 'Rp 5.000.000',
+                                badge: `Peringkat ${(block.data.items || []).length + 1}`
+                              };
+                              handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newPz] } });
+                            }}
+                            className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">add</span>
+                            <span>Tambah Kategori Hadiah</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 6. SPEAKERS BLOCK */}
+                      {block.type === 'speakers' && (
+                        <div className="space-y-3">
+                          <div className="space-y-2.5">
+                            {((block.data?.items as SpeakerItem[]) || []).map((spk, spkIdx) => (
+                              <div key={spk.id || spkIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-bold text-slate-700 text-xs">Pembicara #{spkIdx + 1}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextSpk = block.data.items.filter((_: any, i: number) => i !== spkIdx);
+                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
+                                    }}
+                                    className="text-slate-400 hover:text-red-600 transition-colors"
+                                    title="Hapus Pembicara"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Lengkap</label>
+                                    <input
+                                      type="text"
+                                      value={spk.name || ''}
+                                      onChange={(e) => {
+                                        const nextSpk = [...block.data.items];
+                                        nextSpk[spkIdx].name = e.target.value;
+                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
+                                      }}
+                                      placeholder="Contoh: Dr. Budi Pratama, M.Kom"
+                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Peran / Jabatan (Role)</label>
+                                      <input
+                                        type="text"
+                                        value={spk.role || ''}
+                                        onChange={(e) => {
+                                          const nextSpk = [...block.data.items];
+                                          nextSpk[spkIdx].role = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
+                                        }}
+                                        placeholder="Contoh: Keynote Speaker"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-blue-600 font-semibold"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Instansi / Perusahaan</label>
+                                      <input
+                                        type="text"
+                                        value={spk.companyOrCampus || ''}
+                                        onChange={(e) => {
+                                          const nextSpk = [...block.data.items];
+                                          nextSpk[spkIdx].companyOrCampus = e.target.value;
+                                          handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
+                                        }}
+                                        placeholder="Contoh: Google / Universitas Indonesia"
+                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">URL Foto</label>
+                                    <input
+                                      type="text"
+                                      value={spk.avatarUrl || ''}
+                                      onChange={(e) => {
+                                        const nextSpk = [...block.data.items];
+                                        nextSpk[spkIdx].avatarUrl = e.target.value;
+                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
+                                      }}
+                                      placeholder="https://images.unsplash.com/..."
+                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newSpk: SpeakerItem = {
+                                id: `spk-${Date.now()}`,
+                                name: 'Nama Pembicara',
+                                role: 'Speaker',
+                                companyOrCampus: 'Instansi / Organisasi',
+                                avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
+                              };
+                              handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newSpk] } });
+                            }}
+                            className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">add</span>
+                            <span>Tambah Pembicara</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 7. FAQ BLOCK */}
+                      {block.type === 'faq' && (
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            {((block.data?.items as FaqItem[]) || []).map((faq, fIdx) => (
+                              <div key={faq.id || fIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <input
+                                    type="text"
+                                    value={faq.question}
+                                    onChange={(e) => {
+                                      const nextFaq = [...block.data.items];
+                                      nextFaq[fIdx].question = e.target.value;
+                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
+                                    }}
+                                    placeholder="Pertanyaan"
+                                    className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs font-bold"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextFaq = block.data.items.filter((_: any, i: number) => i !== fIdx);
+                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
+                                    }}
+                                    className="text-slate-400 hover:text-red-600"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+                                <textarea
+                                  value={faq.answer}
+                                  onChange={(e) => {
+                                    const nextFaq = [...block.data.items];
+                                    nextFaq[fIdx].answer = e.target.value;
+                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
+                                  }}
+                                  rows={2}
+                                  placeholder="Jawaban..."
+                                  className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs resize-none"
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newFaq: FaqItem = {
+                                id: `faq-${Date.now()}`,
+                                question: 'Pertanyaan baru?',
+                                answer: 'Jawaban...'
+                              };
+                              handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newFaq] } });
+                            }}
+                            className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">add</span>
+                            <span>Tambah FAQ</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 8. CONTACT BLOCK */}
+                      {block.type === 'contact' && (
+                        <div className="space-y-2.5 text-xs">
+                          <div>
+                            <label className="block text-slate-600 font-bold mb-1">Nama Panitia / Penyelenggara</label>
+                            <input
+                              type="text"
+                              value={block.data?.committeeName || ''}
+                              onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, committeeName: e.target.value } })}
+                              placeholder="Panitia Pelaksana Acara"
+                              className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-slate-600 font-bold mb-1">WhatsApp Narahubung</label>
+                              <input
+                                type="text"
+                                value={block.data?.whatsappNumber || ''}
+                                onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, whatsappNumber: e.target.value } })}
+                                placeholder="6281234567890"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-slate-600 font-bold mb-1">Email Narahubung</label>
+                              <input
+                                type="text"
+                                value={block.data?.email || ''}
+                                onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, email: e.target.value } })}
+                                placeholder="panitia@event.site"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 9. GALLERY & IMAGE UPLOAD BLOCK */}
+                      {block.type === 'gallery' && (
+                        <div className="space-y-3 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                              Daftar Foto ({((block.data?.images || []) as any[]).length}/2 Free)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAddGalleryImage(block.id, block.data?.images || [])}
+                              className="relative text-blue-600 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer pr-1"
+                            >
+                              <span className="material-symbols-outlined text-[15px]">add_photo_alternate</span>
+                              <span>Tambah Foto</span>
+                              {((block.data?.images || []) as any[]).length >= 2 && <ProDiamondBadge />}
+                            </button>
+                          </div>
+
+                          {(((block.data?.images || []) as any[])).map((img, iIdx) => (
+                            <div key={img.id || iIdx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-700">Foto #{iIdx + 1}</span>
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={img.size || 'normal'}
+                                    onChange={(e) => {
+                                      const nextImages = [...(block.data?.images || [])];
+                                      nextImages[iIdx] = { ...nextImages[iIdx], size: e.target.value };
+                                      handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
+                                    }}
+                                    className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium"
+                                  >
+                                    <option value="normal">Kecil (Standar)</option>
+                                    <option value="featured">Besar (Unggulan)</option>
+                                  </select>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextImages = (block.data?.images || []).filter((_: any, idx2: number) => idx2 !== iIdx);
+                                      handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
+                                    }}
+                                    className="w-6 h-6 rounded hover:bg-slate-200 flex items-center justify-center text-red-500"
+                                  >
+                                    <span className="material-symbols-outlined text-[15px]">delete</span>
+                                  </button>
+                                </div>
+                              </div>
+
                               <div className="flex items-center gap-2">
                                 <input
                                   type="text"
-                                  value={block.data?.bannerUrl || ''}
-                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: e.target.value } })}
-                                  placeholder="https://... (kosongkan jika tanpa gambar)"
-                                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
+                                  value={img.url || ''}
+                                  onChange={(e) => {
+                                    const nextImages = [...(block.data?.images || [])];
+                                    nextImages[iIdx] = { ...nextImages[iIdx], url: e.target.value };
+                                    handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
+                                  }}
+                                  placeholder="URL gambar https://..."
+                                  className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
                                 />
-                                <label className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0">
-                                  <span className="material-symbols-outlined text-[16px] text-blue-600">upload_file</span>
+                                <label className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0">
+                                  <span className="material-symbols-outlined text-[15px] text-blue-600">upload</span>
                                   <span>Upload (Maks 5MB)</span>
                                   <input
                                     type="file"
@@ -1323,1090 +2551,209 @@ export default function SparkBuilder({
                                       const file = e.target.files?.[0];
                                       if (!file) return;
                                       if (file.size > 5 * 1024 * 1024) {
-                                        showToast('Ukuran gambar melebihi batas 5 MB.');
+                                        showToast('Ukuran gambar melebihi 5 MB.');
                                         return;
                                       }
                                       const reader = new FileReader();
                                       reader.onload = (ev) => {
-                                        handleUpdateBlock(block.id, { data: { ...block.data, bannerUrl: ev.target?.result as string } });
-                                        showToast('Gambar hero berhasil diunggah!');
+                                        const nextImages = [...(block.data?.images || [])];
+                                        nextImages[iIdx] = { ...nextImages[iIdx], url: ev.target?.result as string };
+                                        handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
+                                        showToast('Foto berhasil diunggah!');
                                       };
                                       reader.readAsDataURL(file);
                                     }}
                                   />
                                 </label>
                               </div>
-                              {block.data?.bannerUrl && (
-                                <div className="mt-2 w-full h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
-                                  <img src={block.data.bannerUrl} alt="Preview" className="w-full h-full object-cover" />
+
+                              <input
+                                type="text"
+                                value={img.caption || ''}
+                                onChange={(e) => {
+                                  const nextImages = [...(block.data?.images || [])];
+                                  nextImages[iIdx] = { ...nextImages[iIdx], caption: e.target.value };
+                                  handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
+                                }}
+                                placeholder="Keterangan / Caption foto (opsional)"
+                                className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                              />
+
+                              {img.url && (
+                                <div className="w-full h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
+                                  <img src={img.url} alt="preview" className="w-full h-full object-cover" />
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
-
-                        {/* CONFIGURABLE ACTION BUTTONS SECTION */}
-                        <div className="pt-2 border-t border-slate-100 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                              Konfigurasi Tombol Aksi ({((block.data?.buttons || []) as HeroButton[]).length}/2)
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleAddButtonToBlock(block.id, block.data?.buttons || [])}
-                              className="relative text-blue-600 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer pr-1"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">add</span>
-                              <span>Tambah Tombol</span>
-                              {((block.data?.buttons || []) as HeroButton[]).length >= 2 && <ProDiamondBadge />}
-                            </button>
-                          </div>
-
-                          <div className="space-y-2.5">
-                            {((block.data?.buttons || []) as HeroButton[]).map((btn, bIdx) => (
-                              <div key={btn.id || bIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                                <div className="flex items-center justify-between gap-3">
-                                  {/* Slider Toggle Switch Without Text (Only Left/Right) */}
-                                  <div className="flex items-center gap-2">
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={btn.enabled}
-                                        onChange={(e) => {
-                                          const nextBtns = [...(block.data?.buttons || [])];
-                                          nextBtns[bIdx].enabled = e.target.checked;
-                                          handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
-                                        }}
-                                        className="sr-only peer"
-                                      />
-                                      <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
-                                    </label>
-                                    <span className="font-bold text-slate-800 text-xs">Tombol #{bIdx + 1}</span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const nextBtns = (block.data?.buttons || []).filter((_: any, i: number) => i !== bIdx);
-                                      handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
-                                    }}
-                                    className="text-slate-400 hover:text-red-600"
-                                    title="Hapus tombol"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px]">close</span>
-                                  </button>
-                                </div>
-
-                                {btn.enabled && (
-                                  <div className="space-y-2 pt-1 border-t border-slate-200/60">
-                                    {/* Label Input */}
-                                    <div>
-                                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Nama Tombol</label>
-                                      <input
-                                        type="text"
-                                        value={btn.label}
-                                        onChange={(e) => {
-                                          const nextBtns = [...(block.data?.buttons || [])];
-                                          nextBtns[bIdx].label = e.target.value;
-                                          handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
-                                        }}
-                                        placeholder="Contoh: Daftar Sekarang"
-                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
-                                      />
-                                    </div>
-
-                                    {/* Target Dropdown */}
-                                    <div>
-                                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Tujuan Direct Tombol</label>
-                                      <select
-                                        value={btn.targetType === 'url' ? 'custom-url' : btn.targetBlockId || ''}
-                                        onChange={(e) => {
-                                          const nextBtns = [...(block.data?.buttons || [])];
-                                          const val = e.target.value;
-                                          if (val === 'custom-url') {
-                                            nextBtns[bIdx].targetType = 'url';
-                                            nextBtns[bIdx].targetBlockId = '';
-                                          } else {
-                                            nextBtns[bIdx].targetType = 'block';
-                                            nextBtns[bIdx].targetBlockId = val;
-                                          }
-                                          handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
-                                        }}
-                                        className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs cursor-pointer"
-                                      >
-                                        <option value="">-- Pilih Tujuan Direct --</option>
-                                        {currentBlocks
-                                          .filter((b) => b.id !== block.id)
-                                          .map((otherBlock) => (
-                                            <option key={otherBlock.id} value={otherBlock.id}>
-                                              Arahkan ke: {otherBlock.title} ({BLOCK_TYPES_META[otherBlock.type]?.label || otherBlock.type})
-                                            </option>
-                                          ))}
-                                        <option value="custom-url">Tautan URL Eksternal (https://...)</option>
-                                      </select>
-                                    </div>
-
-                                    {btn.targetType === 'url' && (
-                                      <div>
-                                        <input
-                                          type="text"
-                                          value={btn.url || ''}
-                                          onChange={(e) => {
-                                            const nextBtns = [...(block.data?.buttons || [])];
-                                            nextBtns[bIdx].url = e.target.value;
-                                            handleUpdateBlock(block.id, { data: { ...block.data, buttons: nextBtns } });
-                                          }}
-                                          placeholder="https://example.com/daftar"
-                                          className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 2. FORM BLOCK WITH MULTI-STEP, 3 FIELD CHOICES & HIDE TOGGLE */}
-                    {block.type === 'form' && (
-                      <div className="space-y-4">
-                        {/* Form Settings: Open Mode & Hide on main page - ONLY VISIBLE WHEN DIRECT BUTTON EXISTS */}
-                        {isBlockTargetedByAnyButton(block.id) && (
-                          <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/90 space-y-3 text-xs">
-                            {/* Open Mode dropdown */}
-                            <div>
-                              <label className="block text-slate-800 font-bold mb-1">Mode Pembukaan Formulir</label>
-                              <select
-                                value={block.data?.openMode || 'same-page'}
-                                onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, openMode: e.target.value } })}
-                                className="w-full bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer"
-                              >
-                                <option value="same-page">Tampilkan di Halaman ini (Scroll ke formulir)</option>
-                                <option value="new-page">Buka di Modal / Halaman Baru</option>
-                              </select>
-                            </div>
-
-                            {/* Hide Form Toggle */}
-                            <div className="pt-2 border-t border-blue-200/60 flex items-center justify-between">
-                              <div>
-                                <span className="block font-bold text-slate-800">Sembunyikan Form dari Halaman Utama</span>
-                                <span className="text-[11px] text-slate-500">
-                                  Form hanya terbuka ketika tombol direct diklik
-                                </span>
-                              </div>
-
-                              <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={!!block.data?.hideFromMainPage}
-                                  onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, hideFromMainPage: e.target.checked } })}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
-                              </label>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Steps (Alur Formulir) */}
-                        <div className="space-y-4">
-                          {((block.data?.steps || []) as FormStep[]).map((step, sIdx) => (
-                            <div key={step.id || sIdx} className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">
-                                    {sIdx + 1}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={step.title}
-                                    onChange={(e) => {
-                                      const nextSteps = [...(block.data.steps || [])];
-                                      nextSteps[sIdx].title = e.target.value;
-                                      handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                    }}
-                                    className="font-bold text-xs text-slate-900 border-b border-transparent hover:border-slate-300 focus:outline-none"
-                                  />
-                                </div>
-
-                                {sIdx > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const nextSteps = (block.data.steps || []).filter((_: any, i: number) => i !== sIdx);
-                                      handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                    }}
-                                    className="text-slate-400 hover:text-red-600 text-xs font-bold"
-                                  >
-                                    Hapus Alur
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Fields within this step */}
-                              <div className="space-y-2">
-                                {(step.fields || []).map((field, fIdx) => (
-                                  <div key={field.id || fIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <input
-                                        type="text"
-                                        value={field.label}
-                                        onChange={(e) => {
-                                          const nextSteps = [...(block.data.steps || [])];
-                                          nextSteps[sIdx].fields[fIdx].label = e.target.value;
-                                          handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                        }}
-                                        className="w-full bg-white px-2.5 py-1 rounded-md border border-slate-200 font-semibold"
-                                      />
-
-                                      <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold uppercase shrink-0">
-                                        {field.type === 'text' ? 'Teks' : field.type === 'image' ? 'Gambar' : 'Pilihan'}
-                                      </span>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const nextSteps = [...(block.data.steps || [])];
-                                          nextSteps[sIdx].fields = nextSteps[sIdx].fields.filter((_: any, i: number) => i !== fIdx);
-                                          handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                        }}
-                                        className="text-slate-400 hover:text-red-600 p-1"
-                                      >
-                                        <span className="material-symbols-outlined text-[15px]">close</span>
-                                      </button>
-                                    </div>
-
-                                    {/* Choice options editor */}
-                                    {field.type === 'choice' && (
-                                      <div className="space-y-1 pt-1 border-t border-slate-200">
-                                        <div className="text-[10px] font-bold text-slate-500">Daftar Pilihan (Pisahkan dengan koma):</div>
-                                        <input
-                                          type="text"
-                                          value={(field.options || []).join(', ')}
-                                          onChange={(e) => {
-                                            const nextSteps = [...(block.data.steps || [])];
-                                            nextSteps[sIdx].fields[fIdx].options = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
-                                            handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                          }}
-                                          placeholder="Opsi 1, Opsi 2, Opsi 3"
-                                          className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs"
-                                        />
-                                      </div>
-                                    )}
-
-                                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                                      <input
-                                        type="text"
-                                        value={field.placeholder || ''}
-                                        onChange={(e) => {
-                                          const nextSteps = [...(block.data.steps || [])];
-                                          nextSteps[sIdx].fields[fIdx].placeholder = e.target.value;
-                                          handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                        }}
-                                        placeholder="Placeholder..."
-                                        className="bg-transparent text-[11px] flex-1 focus:outline-none"
-                                      />
-
-                                      <label className="flex items-center gap-1.5 cursor-pointer ml-3">
-                                        <span>Wajib</span>
-                                        <input
-                                          type="checkbox"
-                                          checked={field.required}
-                                          onChange={(e) => {
-                                            const nextSteps = [...(block.data.steps || [])];
-                                            nextSteps[sIdx].fields[fIdx].required = e.target.checked;
-                                            handleUpdateBlock(block.id, { data: { ...block.data, steps: nextSteps } });
-                                          }}
-                                          className="rounded text-blue-600"
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* 3 Clear Options to Add Column/Field: Teks, Gambar, Pilihan */}
-                              <div className="pt-2 border-t border-slate-100">
-                                <div className="text-[10px] font-bold uppercase text-slate-400 mb-1.5">Tambah Kolom Form:</div>
-                                <div className="grid grid-cols-3 gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddFieldToStep(block.id, sIdx, 'text')}
-                                    className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                                  >
-                                    <span className="material-symbols-outlined text-[15px] text-blue-600">notes</span>
-                                    <span>Teks</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddFieldToStep(block.id, sIdx, 'image')}
-                                    className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                                  >
-                                    <span className="material-symbols-outlined text-[15px] text-blue-600">image</span>
-                                    <span>Gambar</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddFieldToStep(block.id, sIdx, 'choice')}
-                                    className="py-1.5 px-2 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                                  >
-                                    <span className="material-symbols-outlined text-[15px] text-blue-600">list</span>
-                                    <span>Pilihan</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
                           ))}
                         </div>
+                      )}
+                    </div>
 
-                        {/* Button to Add Alur 2 (or subscription gate for Alur 3) */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => handleAddFormStep(block.id, block.data?.steps || [])}
-                            className="w-full py-2.5 rounded-xl border border-dashed border-blue-400 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">add_circle</span>
-                            <span>
-                              {(block.data?.steps || []).length < 2
-                                ? '+ Tambah Alur ke-2'
-                                : `+ Tambah Alur ke-${((block.data?.steps || []) as FormStep[]).length + 1}`}
-                            </span>
-                          </button>
-                          {((block.data?.steps || []) as FormStep[]).length >= 2 && <ProDiamondBadge />}
-                        </div>
+                    {/* BOTTOM ACTION TOOLBAR WITH CLEAN SLIDER TOGGLE (NO TEXT) */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-slate-400">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveBlockUp(idx);
+                          }}
+                          disabled={idx === 0}
+                          className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer"
+                          title="Geser Naik"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
+                        </button>
 
-                        {/* Submit Button Text */}
-                        <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Teks Tombol Submit</label>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveBlockDown(idx);
+                          }}
+                          disabled={idx === currentBlocks.length - 1}
+                          className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer"
+                          title="Geser Turun"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">arrow_downward</span>
+                        </button>
+
+                        <span className="text-[10px] font-mono text-slate-400 ml-1">
+                          #{idx + 1}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicateBlock(block);
+                          }}
+                          className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer"
+                          title="Duplikat"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteBlock(block.id);
+                          }}
+                          className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-red-600 cursor-pointer"
+                          title="Hapus"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+
+                        <span className="h-4 w-px bg-slate-200" />
+
+                        {/* Clean Slider Switch (Left/Right Only, No Text) */}
+                        <label
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative inline-flex items-center cursor-pointer"
+                          title="Aktifkan / Sembunyikan Komponen"
+                        >
                           <input
-                            type="text"
-                            value={block.data?.buttonText || 'Kirim Pendaftaran'}
-                            onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, buttonText: e.target.value } })}
-                            placeholder="Contoh: Kirim Pendaftaran"
-                            className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+                            type="checkbox"
+                            checked={block.enabled}
+                            onChange={(e) => handleUpdateBlock(block.id, { enabled: e.target.checked })}
+                            className="sr-only peer"
                           />
-                        </div>
+                          <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                        </label>
                       </div>
-                    )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
 
-                    {/* 3. TIMELINE BLOCK */}
-                    {block.type === 'timeline' && (
-                      <div className="space-y-3">
-                        <div className="space-y-2.5">
-                          {((block.data?.items as TimelineItem[]) || []).map((stage, sIdx) => (
-                            <div key={stage.id || sIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-bold text-slate-700 text-xs">Tahapan #{sIdx + 1}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextStages = block.data.items.filter((_: any, i: number) => i !== sIdx);
-                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
-                                  }}
-                                  className="text-slate-400 hover:text-red-600 transition-colors"
-                                  title="Hapus"
-                                >
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
-                              </div>
+            {/* TOMBOL TAMBAH FITUR (BERADA DI BAWAH FITUR PALING TERAKHIR) */}
+            <div className="pt-2 pb-12">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                  className="w-full py-3.5 px-4 rounded-2xl border-2 border-dashed border-blue-400/80 hover:border-blue-600 bg-white hover:bg-blue-50/50 text-blue-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-sm active:scale-[0.99]"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                  <span>Tambah Fitur Baru</span>
+                </button>
 
-                              <div className="space-y-2">
-                                <div>
-                                  <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Tahapan</label>
-                                  <input
-                                    type="text"
-                                    value={stage.name || ''}
-                                    onChange={(e) => {
-                                      const nextStages = [...block.data.items];
-                                      nextStages[sIdx].name = e.target.value;
-                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
-                                    }}
-                                    placeholder="Contoh: Registrasi Peserta"
-                                    className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Tanggal Mulai</label>
-                                    <input
-                                      type="text"
-                                      value={stage.startDate || ''}
-                                      onChange={(e) => {
-                                        const nextStages = [...block.data.items];
-                                        nextStages[sIdx].startDate = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
-                                      }}
-                                      placeholder="01 Nov"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Tanggal Selesai</label>
-                                    <input
-                                      type="text"
-                                      value={stage.endDate || ''}
-                                      onChange={(e) => {
-                                        const nextStages = [...block.data.items];
-                                        nextStages[sIdx].endDate = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
-                                      }}
-                                      placeholder="15 Nov"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Keterangan / Deskripsi</label>
-                                  <input
-                                    type="text"
-                                    value={stage.description || ''}
-                                    onChange={(e) => {
-                                      const nextStages = [...block.data.items];
-                                      nextStages[sIdx].description = e.target.value;
-                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextStages } });
-                                    }}
-                                    placeholder="Penjelasan tahapan kegiatan..."
-                                    className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
+                {isAddMenuOpen && (
+                  <div className="mt-2 w-full bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-30 space-y-1 animate-fadeIn">
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      PILIH FITUR / KOMPONEN
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {Object.entries(BLOCK_TYPES_META).map(([key, item]) => (
                         <button
+                          key={key}
                           type="button"
-                          onClick={() => {
-                            const newStage: TimelineItem = {
-                              id: `t-${Date.now()}`,
-                              name: 'Tahapan Baru',
-                              description: '',
-                              startDate: '10 Nov',
-                              endDate: '15 Nov',
-                              order: (block.data.items || []).length + 1,
-                              status: 'upcoming'
-                            };
-                            handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newStage] } });
-                          }}
-                          className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          onClick={() => handleAddBlock(key as EventBlockType)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-blue-50 text-slate-800 transition-colors cursor-pointer group"
                         >
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          <span>Tambah Tahapan Timeline</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* 4. TEXT BLOCK */}
-                    {block.type === 'text' && (
-                      <div className="space-y-2">
-                        <textarea
-                          value={block.data?.content || ''}
-                          onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, content: e.target.value } })}
-                          rows={4}
-                          placeholder="Ketik teks penjelasan atau aturan..."
-                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 resize-none leading-relaxed"
-                        />
-                      </div>
-                    )}
-
-                    {/* 5. PRIZES BLOCK */}
-                    {block.type === 'prizes' && (
-                      <div className="space-y-3">
-                        <div className="space-y-2.5">
-                          {((block.data?.items as CategoryItem[]) || []).map((pz, pzIdx) => (
-                            <div key={pz.id || pzIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-bold text-slate-700 text-xs">Kategori Hadiah #{pzIdx + 1}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextPz = block.data.items.filter((_: any, i: number) => i !== pzIdx);
-                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
-                                  }}
-                                  className="text-slate-400 hover:text-red-600 transition-colors"
-                                  title="Hapus"
-                                >
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
-                              </div>
-
-                              <div className="space-y-2">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Juara / Kategori</label>
-                                    <input
-                                      type="text"
-                                      value={pz.title || ''}
-                                      onChange={(e) => {
-                                        const nextPz = [...block.data.items];
-                                        nextPz[pzIdx].title = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
-                                      }}
-                                      placeholder="Contoh: Juara 1"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nominal Hadiah</label>
-                                    <input
-                                      type="text"
-                                      value={pz.prizePool || ''}
-                                      onChange={(e) => {
-                                        const nextPz = [...block.data.items];
-                                        nextPz[pzIdx].prizePool = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
-                                      }}
-                                      placeholder="Rp 10.000.000"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-blue-600 font-bold"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Label Badge</label>
-                                    <input
-                                      type="text"
-                                      value={pz.badge || ''}
-                                      onChange={(e) => {
-                                        const nextPz = [...block.data.items];
-                                        nextPz[pzIdx].badge = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
-                                      }}
-                                      placeholder="Contoh: Juara Utama"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Keterangan / Fasilitas</label>
-                                    <input
-                                      type="text"
-                                      value={pz.description || ''}
-                                      onChange={(e) => {
-                                        const nextPz = [...block.data.items];
-                                        nextPz[pzIdx].description = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextPz } });
-                                      }}
-                                      placeholder="Piala + Piagam + Mentoring"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newPz: CategoryItem = {
-                              id: `pz-${Date.now()}`,
-                              title: `Juara ${(block.data.items || []).length + 1}`,
-                              targetAudience: '',
-                              description: 'Uang tunai + Sertifikat',
-                              prizePool: 'Rp 5.000.000',
-                              badge: `Peringkat ${(block.data.items || []).length + 1}`
-                            };
-                            handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newPz] } });
-                          }}
-                          className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          <span>Tambah Kategori Hadiah</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* 6. SPEAKERS BLOCK */}
-                    {block.type === 'speakers' && (
-                      <div className="space-y-3">
-                        <div className="space-y-2.5">
-                          {((block.data?.items as SpeakerItem[]) || []).map((spk, spkIdx) => (
-                            <div key={spk.id || spkIdx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-bold text-slate-700 text-xs">Pembicara #{spkIdx + 1}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextSpk = block.data.items.filter((_: any, i: number) => i !== spkIdx);
-                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
-                                  }}
-                                  className="text-slate-400 hover:text-red-600 transition-colors"
-                                  title="Hapus Pembicara"
-                                >
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
-                              </div>
-
-                              <div className="space-y-2">
-                                <div>
-                                  <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Nama Lengkap</label>
-                                  <input
-                                    type="text"
-                                    value={spk.name || ''}
-                                    onChange={(e) => {
-                                      const nextSpk = [...block.data.items];
-                                      nextSpk[spkIdx].name = e.target.value;
-                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
-                                    }}
-                                    placeholder="Contoh: Dr. Budi Pratama, M.Kom"
-                                    className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Peran / Jabatan (Role)</label>
-                                    <input
-                                      type="text"
-                                      value={spk.role || ''}
-                                      onChange={(e) => {
-                                        const nextSpk = [...block.data.items];
-                                        nextSpk[spkIdx].role = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
-                                      }}
-                                      placeholder="Contoh: Keynote Speaker"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-blue-600 font-semibold"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">Instansi / Perusahaan</label>
-                                    <input
-                                      type="text"
-                                      value={spk.companyOrCampus || ''}
-                                      onChange={(e) => {
-                                        const nextSpk = [...block.data.items];
-                                        nextSpk[spkIdx].companyOrCampus = e.target.value;
-                                        handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
-                                      }}
-                                      placeholder="Contoh: Google / Universitas Indonesia"
-                                      className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">URL Foto</label>
-                                  <input
-                                    type="text"
-                                    value={spk.avatarUrl || ''}
-                                    onChange={(e) => {
-                                      const nextSpk = [...block.data.items];
-                                      nextSpk[spkIdx].avatarUrl = e.target.value;
-                                      handleUpdateBlock(block.id, { data: { ...block.data, items: nextSpk } });
-                                    }}
-                                    placeholder="https://images.unsplash.com/..."
-                                    className="w-full bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-slate-600"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newSpk: SpeakerItem = {
-                              id: `spk-${Date.now()}`,
-                              name: 'Nama Pembicara',
-                              role: 'Speaker',
-                              companyOrCampus: 'Instansi / Organisasi',
-                              avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
-                            };
-                            handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newSpk] } });
-                          }}
-                          className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          <span>Tambah Pembicara</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* 7. FAQ BLOCK */}
-                    {block.type === 'faq' && (
-                      <div className="space-y-3">
-                        <div className="space-y-2">
-                          {((block.data?.items as FaqItem[]) || []).map((faq, fIdx) => (
-                            <div key={faq.id || fIdx} className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <input
-                                  type="text"
-                                  value={faq.question}
-                                  onChange={(e) => {
-                                    const nextFaq = [...block.data.items];
-                                    nextFaq[fIdx].question = e.target.value;
-                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
-                                  }}
-                                  placeholder="Pertanyaan"
-                                  className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs font-bold"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextFaq = block.data.items.filter((_: any, i: number) => i !== fIdx);
-                                    handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
-                                  }}
-                                  className="text-slate-400 hover:text-red-600"
-                                >
-                                  <span className="material-symbols-outlined text-[16px]">close</span>
-                                </button>
-                              </div>
-                              <textarea
-                                value={faq.answer}
-                                onChange={(e) => {
-                                  const nextFaq = [...block.data.items];
-                                  nextFaq[fIdx].answer = e.target.value;
-                                  handleUpdateBlock(block.id, { data: { ...block.data, items: nextFaq } });
-                                }}
-                                rows={2}
-                                placeholder="Jawaban..."
-                                className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-xs resize-none"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newFaq: FaqItem = {
-                              id: `faq-${Date.now()}`,
-                              question: 'Pertanyaan baru?',
-                              answer: 'Jawaban...'
-                            };
-                            handleUpdateBlock(block.id, { data: { ...block.data, items: [...(block.data.items || []), newFaq] } });
-                          }}
-                          className="w-full py-2 rounded-xl border border-dashed border-blue-300 text-blue-600 text-xs font-bold hover:bg-blue-50/50 flex items-center justify-center gap-1"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          <span>Tambah FAQ</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* 8. CONTACT BLOCK */}
-                    {block.type === 'contact' && (
-                      <div className="space-y-2.5 text-xs">
-                        <div>
-                          <label className="block text-slate-600 font-bold mb-1">Nama Panitia / Penyelenggara</label>
-                          <input
-                            type="text"
-                            value={block.data?.committeeName || ''}
-                            onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, committeeName: e.target.value } })}
-                            placeholder="Panitia Pelaksana Acara"
-                            className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-slate-600 font-bold mb-1">WhatsApp Narahubung</label>
-                            <input
-                              type="text"
-                              value={block.data?.whatsappNumber || ''}
-                              onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, whatsappNumber: e.target.value } })}
-                              placeholder="6281234567890"
-                              className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-slate-600 font-bold mb-1">Email Narahubung</label>
-                            <input
-                              type="text"
-                              value={block.data?.email || ''}
-                              onChange={(e) => handleUpdateBlock(block.id, { data: { ...block.data, email: e.target.value } })}
-                              placeholder="panitia@event.site"
-                              className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 9. GALLERY & IMAGE UPLOAD BLOCK */}
-                    {block.type === 'gallery' && (
-                      <div className="space-y-3 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                            Daftar Foto ({((block.data?.images || []) as any[]).length}/2 Free)
+                          <span className="material-symbols-outlined text-[18px] text-blue-600 group-hover:scale-110 transition-transform">
+                            {item.icon}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => handleAddGalleryImage(block.id, block.data?.images || [])}
-                            className="relative text-blue-600 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer pr-1"
-                          >
-                            <span className="material-symbols-outlined text-[15px]">add_photo_alternate</span>
-                            <span>Tambah Foto</span>
-                            {((block.data?.images || []) as any[]).length >= 2 && <ProDiamondBadge />}
-                          </button>
-                        </div>
-
-                        {(((block.data?.images || []) as any[])).map((img, iIdx) => (
-                          <div key={img.id || iIdx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-slate-700">Foto #{iIdx + 1}</span>
-                              <div className="flex items-center gap-2">
-                                <select
-                                  value={img.size || 'normal'}
-                                  onChange={(e) => {
-                                    const nextImages = [...(block.data?.images || [])];
-                                    nextImages[iIdx] = { ...nextImages[iIdx], size: e.target.value };
-                                    handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
-                                  }}
-                                  className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium"
-                                >
-                                  <option value="normal">Kecil (Standar)</option>
-                                  <option value="featured">Besar (Unggulan)</option>
-                                </select>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextImages = (block.data?.images || []).filter((_: any, idx2: number) => idx2 !== iIdx);
-                                    handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
-                                  }}
-                                  className="w-6 h-6 rounded hover:bg-slate-200 flex items-center justify-center text-red-500"
-                                >
-                                  <span className="material-symbols-outlined text-[15px]">delete</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={img.url || ''}
-                                onChange={(e) => {
-                                  const nextImages = [...(block.data?.images || [])];
-                                  nextImages[iIdx] = { ...nextImages[iIdx], url: e.target.value };
-                                  handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
-                                }}
-                                placeholder="URL gambar https://..."
-                                className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
-                              />
-                              <label className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0">
-                                <span className="material-symbols-outlined text-[15px] text-blue-600">upload</span>
-                                <span>Upload (Maks 5MB)</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="sr-only"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    if (file.size > 5 * 1024 * 1024) {
-                                      showToast('Ukuran gambar melebihi 5 MB.');
-                                      return;
-                                    }
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => {
-                                      const nextImages = [...(block.data?.images || [])];
-                                      nextImages[iIdx] = { ...nextImages[iIdx], url: ev.target?.result as string };
-                                      handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
-                                      showToast('Foto berhasil diunggah!');
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }}
-                                />
-                              </label>
-                            </div>
-
-                            <input
-                              type="text"
-                              value={img.caption || ''}
-                              onChange={(e) => {
-                                const nextImages = [...(block.data?.images || [])];
-                                nextImages[iIdx] = { ...nextImages[iIdx], caption: e.target.value };
-                                handleUpdateBlock(block.id, { data: { ...block.data, images: nextImages } });
-                              }}
-                              placeholder="Keterangan / Caption foto (opsional)"
-                              className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                            />
-
-                            {img.url && (
-                              <div className="w-full h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
-                                <img src={img.url} alt="preview" className="w-full h-full object-cover" />
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* BOTTOM ACTION TOOLBAR WITH CLEAN SLIDER TOGGLE (NO TEXT) */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-slate-400">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMoveBlockUp(idx);
-                        }}
-                        disabled={idx === 0}
-                        className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer"
-                        title="Geser Naik"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMoveBlockDown(idx);
-                        }}
-                        disabled={idx === currentBlocks.length - 1}
-                        className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer"
-                        title="Geser Turun"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">arrow_downward</span>
-                      </button>
-
-                      <span className="text-[10px] font-mono text-slate-400 ml-1">
-                        #{idx + 1}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDuplicateBlock(block);
-                        }}
-                        className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer"
-                        title="Duplikat"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">content_copy</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteBlock(block.id);
-                        }}
-                        className="w-7 h-7 rounded hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-red-600 cursor-pointer"
-                        title="Hapus"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
-                      </button>
-
-                      <span className="h-4 w-px bg-slate-200" />
-
-                      {/* Clean Slider Switch (Left/Right Only, No Text) */}
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        className="relative inline-flex items-center cursor-pointer"
-                        title="Aktifkan / Sembunyikan Komponen"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={block.enabled}
-                          onChange={(e) => handleUpdateBlock(block.id, { enabled: e.target.checked })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
-                      </label>
+                          <span className="text-xs font-bold text-slate-900 group-hover:text-blue-700">
+                            {item.label}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
-            );
-          })}
-
-          {/* TOMBOL TAMBAH FITUR (BERADA DI BAWAH FITUR PALING TERAKHIR) */}
-          <div className="pt-2 pb-12">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                className="w-full py-3.5 px-4 rounded-2xl border-2 border-dashed border-blue-400/80 hover:border-blue-600 bg-white hover:bg-blue-50/50 text-blue-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-sm active:scale-[0.99]"
-              >
-                <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                <span>Tambah Fitur Baru</span>
-              </button>
-
-              {isAddMenuOpen && (
-                <div className="mt-2 w-full bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-30 space-y-1 animate-fadeIn">
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    PILIH FITUR / KOMPONEN
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {Object.entries(BLOCK_TYPES_META).map(([key, item]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => handleAddBlock(key as EventBlockType)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-blue-50 text-slate-800 transition-colors cursor-pointer group"
-                      >
-                        <span className="material-symbols-outlined text-[18px] text-blue-600 group-hover:scale-110 transition-transform">
-                          {item.icon}
-                        </span>
-                        <span className="text-xs font-bold text-slate-900 group-hover:text-blue-700">
-                          {item.label}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-        </div>
 
-        {/* ─── RIGHT: LIVE DEVICE PREVIEW (SCROLL 2 - SEPARATE INDEPENDENT SCROLL) ─ */}
-        <div className="flex-1 bg-slate-200/80 h-full overflow-y-auto p-4 sm:p-6 flex items-start justify-center">
-          <div
-            className={`transition-all duration-300 w-full bg-white rounded-2xl shadow-2xl border border-slate-300/80 overflow-hidden flex flex-col ${
-              deviceViewport === 'mobile'
+          {/* ─── RIGHT: LIVE DEVICE PREVIEW (SCROLL 2 - SEPARATE INDEPENDENT SCROLL) ─ */}
+          <div className="flex-1 bg-slate-200/80 h-full overflow-y-auto p-4 sm:p-6 flex items-start justify-center">
+            <div
+              className={`transition-all duration-300 w-full bg-white rounded-2xl shadow-2xl border border-slate-300/80 overflow-hidden flex flex-col ${deviceViewport === 'mobile'
                 ? 'max-w-[390px] min-h-[780px]'
                 : deviceViewport === 'tablet'
-                ? 'max-w-[768px] min-h-[820px]'
-                : 'max-w-[1080px] min-h-[860px]'
-            }`}
-          >
-            {/* Simulated Browser Chrome */}
-            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs shrink-0 select-none">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-rose-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
+                  ? 'max-w-[768px] min-h-[820px]'
+                  : 'max-w-[1080px] min-h-[860px]'
+                }`}
+            >
+              {/* Simulated Browser Chrome */}
+              <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs shrink-0 select-none">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-rose-400 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
+                </div>
+
+                <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-white border border-slate-200 text-slate-500 font-mono text-[11px] max-w-sm sm:max-w-md w-full justify-center shadow-2xs">
+                  <span className="material-symbols-outlined text-[13px] text-slate-400">lock</span>
+                  <span className="truncate">https://{slugInput || currentWs.slug || 'event'}.iventra.site</span>
+                  <span className="material-symbols-outlined text-[13px] text-slate-400 ml-auto">refresh</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <span className="text-[10px] font-mono">100%</span>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-white border border-slate-200 text-slate-500 font-mono text-[11px] max-w-sm sm:max-w-md w-full justify-center shadow-2xs">
-                <span className="material-symbols-outlined text-[13px] text-slate-400">lock</span>
-                <span className="truncate">https://{slugInput || currentWs.slug || 'event'}.iventra.site</span>
-                <span className="material-symbols-outlined text-[13px] text-slate-400 ml-auto">refresh</span>
+              {/* LIVE EVENT RENDERER */}
+              <div className={`flex-1 overflow-y-auto transition-colors ${config.theme?.bgStyle === 'dark-modern' ? 'bg-[#090b11]' : 'bg-slate-100'}`}>
+                <SparkEventRenderer
+                  key={`${config.theme?.bgStyle}-${config.theme?.bgColor || ''}-${config.theme?.primaryColor}-${config.theme?.accentColor}`}
+                  config={config}
+                  isPreviewMode={true}
+                  slug={currentWs.slug || currentWs.id}
+                />
               </div>
-
-              <div className="flex items-center gap-1.5 text-slate-400">
-                <span className="text-[10px] font-mono">100%</span>
-              </div>
-            </div>
-
-            {/* LIVE EVENT RENDERER */}
-            <div className="flex-1 overflow-y-auto bg-white">
-              <SparkEventRenderer config={config} isPreviewMode={true} />
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ─── TOAST NOTIFICATION ────────────────────────────────────────────── */}
       {toastMessage && (
@@ -2425,15 +2772,18 @@ export default function SparkBuilder({
               <div className="p-6 sm:p-7 space-y-5">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                      style={{ background: `linear-gradient(135deg, ${config.theme?.primaryColor || '#0c1df3'}, ${config.theme?.accentColor || '#3b47dc'})` }}
+                    >
                       <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
                     </div>
                     <div>
-                      <h3 className="font-display font-extrabold text-base text-slate-900">
-                        Publikasikan Website Event
+                      <h3 className="font-display font-bold text-base text-slate-900">
+                        Publikasikan Website
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Luncurkan website ke internet dan dapatkan tautan publik instan.
+                        Atur nama dan domain publik website Anda.
                       </p>
                     </div>
                   </div>
@@ -2462,7 +2812,7 @@ export default function SparkBuilder({
 
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">
-                      Alamat Domain Publik (Subdomain)
+                      Alamat Domain Publik
                     </label>
                     <div className="flex items-center px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50">
                       <span className="text-slate-400 font-mono text-xs">https://</span>
@@ -2471,30 +2821,9 @@ export default function SparkBuilder({
                         value={publishSlug}
                         onChange={(e) => setPublishSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                         placeholder="nama-event"
-                        className="flex-1 bg-transparent px-1 font-mono font-bold text-blue-600 text-xs focus:outline-none"
+                        className="flex-1 bg-transparent px-1 font-mono font-bold text-slate-800 text-xs focus:outline-none"
                       />
                       <span className="text-slate-400 font-mono text-xs">.iventra.site</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 mt-1 block">
-                      Tautan dapat diakses oleh peserta di seluruh dunia secara instan.
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/70 space-y-2">
-                    <span className="font-bold text-blue-900 block text-xs">Kesiapan Publikasi:</span>
-                    <div className="space-y-1 text-slate-600 text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
-                        <span>Hosting CDN Global &amp; Sertifikat SSL Aktif Otomatis</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
-                        <span>Formulir dan alur pendaftaran siap menerima peserta</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
-                        <span>Dapat diedit dan di-update kembali kapan saja</span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -2510,43 +2839,39 @@ export default function SparkBuilder({
                   <button
                     type="button"
                     onClick={executePublishWithRocket}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all"
+                    className="px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all hover:opacity-95"
+                    style={{ background: `linear-gradient(135deg, ${config.theme?.primaryColor || '#0c1df3'}, ${config.theme?.accentColor || '#3b47dc'})` }}
                   >
                     <span className="material-symbols-outlined text-[17px]">rocket_launch</span>
-                    <span>Luncurkan Website Sekarang 🚀</span>
+                    <span>Luncurkan Website</span>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* STAGE 2: ANIMASI ROKET MELUNCUR */}
+            {/* STAGE 2: ANIMASI ROKET MELUNCUR (MODERN, CLEAN, SELARAS TEMA & TANPA EMOTE) */}
             {publishModalStep === 'launching' && (
-              <div className="p-10 text-center space-y-6 bg-gradient-to-b from-[#0a0f24] via-[#10193d] to-[#070b18] text-white">
-                <div className="py-8 flex flex-col items-center justify-center relative">
-                  {/* Space particles */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-40 pointer-events-none">
-                    <div className="w-48 h-48 rounded-full border border-blue-400/20 animate-ping" />
+              <div className="p-8 sm:p-10 text-center space-y-5 bg-white">
+                <div className="py-6 flex flex-col items-center justify-center">
+                  <div
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center text-white shadow-lg mb-4 animate-bounce"
+                    style={{ background: `linear-gradient(135deg, ${config.theme?.primaryColor || '#0c1df3'}, ${config.theme?.accentColor || '#3b47dc'})` }}
+                  >
+                    <span className="material-symbols-outlined text-[32px]">rocket_launch</span>
                   </div>
 
-                  {/* Rocket Launch Animation Container */}
-                  <div className="relative flex flex-col items-center">
-                    <div className="w-20 h-20 rounded-full bg-blue-500/20 border-2 border-blue-400/40 flex items-center justify-center mb-4 shadow-[0_0_50px_rgba(59,130,246,0.5)] animate-bounce">
-                      <span className="text-5xl transform -rotate-45 block">🚀</span>
-                    </div>
-
-                    {/* Rocket Flame / Exhaust Glow */}
-                    <div className="w-4 h-12 bg-gradient-to-b from-orange-400 via-amber-300 to-transparent blur-[2px] rounded-full animate-pulse -mt-4 mb-3" />
-                  </div>
-
-                  <h3 className="text-xl font-display font-extrabold text-white mt-2">
-                    Meluncurkan Website Event...
+                  <h3 className="text-lg font-display font-extrabold text-slate-900">
+                    Mempublikasikan Website
                   </h3>
-                  <p className="text-xs text-blue-200/80 max-w-sm mt-1 animate-pulse">
-                    Mengompilasi aset, menghubungkan domain {publishSlug}.iventra.site, dan menyalakan SSL...
+                  <p className="text-xs text-slate-500 max-w-xs mt-1">
+                    Menghubungkan domain https://{publishSlug}.iventra.site...
                   </p>
 
-                  <div className="w-56 h-1.5 bg-white/10 rounded-full overflow-hidden mt-6">
-                    <div className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 w-full animate-[shimmer_1.5s_infinite]" />
+                  <div className="w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden mt-6">
+                    <div
+                      className="h-full rounded-full w-full animate-[shimmer_1.5s_infinite]"
+                      style={{ background: `linear-gradient(90deg, ${config.theme?.primaryColor || '#0c1df3'}, ${config.theme?.accentColor || '#3b47dc'})` }}
+                    />
                   </div>
                 </div>
               </div>
@@ -2554,23 +2879,23 @@ export default function SparkBuilder({
 
             {/* STAGE 3: SUKSES PUBLIKASI */}
             {publishModalStep === 'success' && (
-              <div className="p-8 text-center space-y-5 bg-white">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-3xl shadow-md border-4 border-emerald-50">
-                  🎉
+              <div className="p-7 sm:p-8 text-center space-y-4 bg-white">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                  <span className="material-symbols-outlined text-[30px]">check_circle</span>
                 </div>
 
                 <div>
-                  <h3 className="font-display font-black text-xl text-slate-900">
-                    Website Telah Berhasil Dipublikasikan!
+                  <h3 className="font-display font-extrabold text-lg text-slate-900">
+                    Website Berhasil Dipublikasikan
                   </h3>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                    Website event Anda sekarang aktif secara publik dan siap menerima pengunjung serta pendaftar.
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto mt-0.5">
+                    Website event Anda telah aktif dan dapat diakses publik.
                   </p>
                 </div>
 
                 {/* Published Link Box */}
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-2">
-                  <span className="text-[11px] font-semibold text-slate-500 block">Tautan Langsung Website:</span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-left space-y-1.5">
+                  <span className="text-[11px] font-semibold text-slate-500 block">Tautan Website:</span>
                   <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200">
                     <a
                       href={`https://${publishSlug}.iventra.site`}
@@ -2584,9 +2909,9 @@ export default function SparkBuilder({
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(`https://${publishSlug}.iventra.site`);
-                        showToast('Tautan berhasil disalin ke clipboard!');
+                        showToast('Link berhasil disalin ke clipboard!');
                       }}
-                      className="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+                      className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold shrink-0 cursor-pointer"
                     >
                       Salin Link
                     </button>
@@ -2598,7 +2923,8 @@ export default function SparkBuilder({
                     href={`https://${publishSlug}.iventra.site`}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+                    className="px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                    style={{ background: `linear-gradient(135deg, ${config.theme?.primaryColor || '#0c1df3'}, ${config.theme?.accentColor || '#3b47dc'})` }}
                   >
                     <span>Kunjungi Website ↗</span>
                   </a>

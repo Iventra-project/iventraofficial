@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Logo from './Logo.tsx';
 import type { AuthUser } from './AuthPage.tsx';
 import TemplateSelectorModal from './spark/TemplateSelectorModal.tsx';
 import SparkSubscriptionModal from './spark/SparkSubscriptionModal.tsx';
-import { getTemplateById, type TemplateId, SPARK_TEMPLATES } from '../types/builder.ts';
+import RealtimeWorkspaceThumbnail from './spark/RealtimeWorkspaceThumbnail.tsx';
+import { getTemplateById, type TemplateId, SPARK_TEMPLATES, type EventConfig } from '../types/builder.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,13 @@ export type DashboardSidebarNav =
   | 'subscription'
   | 'settings';
 
+interface FormPresetItem {
+  id: string;
+  title: string;
+  accentColor: string;
+  getConfig: () => EventConfig;
+}
+
 export default function UserDashboard({
   user,
   token,
@@ -52,9 +60,11 @@ export default function UserDashboard({
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [workspaceFilterTab, setWorkspaceFilterTab] = useState<'all' | 'spark' | 'expert'>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortOrder, setSortOrder] = useState<'date' | 'alpha'>('date');
+  const [ownershipFilter, setOwnershipFilter] = useState<'anyone' | 'me'>('anyone');
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const [activeMenuWsId, setActiveMenuWsId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals
@@ -73,6 +83,8 @@ export default function UserDashboard({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
+
+  const filterRef = useRef<HTMLDivElement>(null);
 
   const authHeaders = {
     'Content-Type': 'application/json',
@@ -105,7 +117,278 @@ export default function UserDashboard({
     loadWorkspaces();
   }, [loadWorkspaces]);
 
-  // Create Workspace with selected template
+  useEffect(() => {
+    if (currentNav === 'workspaces') {
+      loadWorkspaces();
+    }
+  }, [currentNav, loadWorkspaces]);
+
+  // Global click listener to close popovers
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setIsFilterDropdownOpen(false);
+      }
+      if (activeMenuWsId) {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.ws-card-menu')) {
+          setActiveMenuWsId(null);
+        }
+      }
+    };
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, [activeMenuWsId]);
+
+  // ─── 5 Google Forms Presets adapted to Iventra ─────────────────────────────
+
+  const FORM_PRESETS: FormPresetItem[] = [
+    {
+      id: 'blank',
+      title: 'Blank form',
+      accentColor: '#1f2de6',
+      getConfig: () => {
+        const tmpl = getTemplateById('blank');
+        return {
+          ...tmpl.defaultConfig,
+          eventName: 'Untitled form',
+          description: '',
+          blocks: []
+        };
+      }
+    },
+    {
+      id: 'contact',
+      title: 'Contact Information',
+      accentColor: '#059669',
+      getConfig: () => ({
+        eventName: 'Contact Information',
+        tagline: '',
+        description: 'Silakan isi formulir kontak untuk terhubung dengan tim kami.',
+        institutionName: '',
+        logoUrl: '',
+        bannerUrl: '',
+        eventDateText: '',
+        eventLocationText: '',
+        isOnline: false,
+        statusBadgeText: '',
+        theme: {
+          primaryColor: '#059669',
+          accentColor: '#10b981',
+          bgStyle: 'clean-white',
+          fontFamily: 'sans'
+        },
+        blocks: [
+          {
+            id: 'block-form-contact',
+            type: 'form',
+            title: 'Contact Information',
+            subtitle: '',
+            enabled: true,
+            data: {
+              buttonText: 'Submit',
+              openMode: 'same-page',
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Informasi Kontak',
+                  fields: [
+                    { id: 'f-name', label: 'Name', type: 'text', required: true, placeholder: 'Nama Lengkap' },
+                    { id: 'f-email', label: 'Email', type: 'text', required: true, placeholder: 'email@domain.com' },
+                    { id: 'f-address', label: 'Address', type: 'text', required: false, placeholder: 'Alamat' },
+                    { id: 'f-phone', label: 'Phone number', type: 'text', required: false, placeholder: '08123456789' },
+                    { id: 'f-comments', label: 'Comments', type: 'text', required: false, placeholder: 'Pesan / catatan' }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      })
+    },
+    {
+      id: 'rsvp',
+      title: 'RSVP',
+      accentColor: '#1f2de6',
+      getConfig: () => ({
+        eventName: 'Event RSVP',
+        tagline: '',
+        description: 'Konfirmasi kehadiran Anda pada acara.',
+        institutionName: '',
+        logoUrl: '',
+        bannerUrl: 'https://images.unsplash.com/photo-1511578314322-379afb476865?w=1200&auto=format&fit=crop&q=80',
+        eventDateText: 'Sabtu, 28 November 2026',
+        eventLocationText: 'Auditorium Utama',
+        isOnline: false,
+        statusBadgeText: '',
+        theme: {
+          primaryColor: '#1f2de6',
+          accentColor: '#3b82f6',
+          bgStyle: 'clean-white',
+          fontFamily: 'sans'
+        },
+        blocks: [
+          {
+            id: 'block-form-rsvp',
+            type: 'form',
+            title: 'RSVP',
+            subtitle: 'Mohon konfirmasi kehadiran sebelum kuota penuh',
+            enabled: true,
+            data: {
+              buttonText: 'Submit',
+              openMode: 'same-page',
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Kehadiran',
+                  fields: [
+                    { id: 'f-name', label: 'Can you attend?', type: 'choice', required: true, options: ['Yes, I will be there', 'Sorry, cannot make it'] },
+                    { id: 'f-attendees', label: 'What are the names of people attending?', type: 'text', required: false, placeholder: 'Nama peserta' },
+                    { id: 'f-source', label: 'How did you hear about this event?', type: 'text', required: false, placeholder: 'Media sosial, teman, dsb.' }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      })
+    },
+    {
+      id: 'party',
+      title: 'Party Invite',
+      accentColor: '#ea580c',
+      getConfig: () => ({
+        eventName: 'Party Invite',
+        tagline: '',
+        description: 'Bergabung dalam acara perayaan kami.',
+        institutionName: '',
+        logoUrl: '',
+        bannerUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1200&auto=format&fit=crop&q=80',
+        eventDateText: 'Jumat Malam, 19.30 WIB',
+        eventLocationText: 'Lounge Hall',
+        isOnline: false,
+        statusBadgeText: '',
+        theme: {
+          primaryColor: '#ea580c',
+          accentColor: '#f97316',
+          bgStyle: 'clean-white',
+          fontFamily: 'sans'
+        },
+        blocks: [
+          {
+            id: 'block-form-party',
+            type: 'form',
+            title: 'Party Invite',
+            subtitle: '',
+            enabled: true,
+            data: {
+              buttonText: 'Submit',
+              openMode: 'same-page',
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Undangan',
+                  fields: [
+                    { id: 'f-name', label: 'What is your name?', type: 'text', required: true, placeholder: 'Nama Anda' },
+                    { id: 'f-makeit', label: 'Can you make it?', type: 'choice', required: true, options: ['Yes, definitely!', 'Maybe', 'No, sorry'] },
+                    { id: 'f-count', label: 'How many of you will attend?', type: 'choice', required: false, options: ['1 orang', '2 orang', '3+ orang'] },
+                    { id: 'f-bring', label: 'What will you bring?', type: 'choice', required: false, options: ['Makanan Ringan', 'Minuman', 'Dessert', 'Lainnya'] }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      })
+    },
+    {
+      id: 'tshirt',
+      title: 'T-Shirt Sign Up',
+      accentColor: '#7c3aed',
+      getConfig: () => ({
+        eventName: 'T-Shirt Sign Up',
+        tagline: '',
+        description: 'Pendaftaran ukuran merchandise dan seragam kegiatan.',
+        institutionName: '',
+        logoUrl: '',
+        bannerUrl: '',
+        eventDateText: '',
+        eventLocationText: '',
+        isOnline: false,
+        statusBadgeText: '',
+        theme: {
+          primaryColor: '#7c3aed',
+          accentColor: '#a855f7',
+          bgStyle: 'clean-white',
+          fontFamily: 'sans'
+        },
+        blocks: [
+          {
+            id: 'block-form-tshirt',
+            type: 'form',
+            title: 'T-Shirt Sign Up',
+            subtitle: 'Pilih ukuran kaos yang sesuai',
+            enabled: true,
+            data: {
+              buttonText: 'Submit',
+              openMode: 'same-page',
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Data Kaos',
+                  fields: [
+                    { id: 'f-name', label: 'Full Name', type: 'text', required: true, placeholder: 'Nama lengkap' },
+                    { id: 'f-email', label: 'Email', type: 'text', required: true, placeholder: 'email@domain.com' },
+                    { id: 'f-size', label: 'Shirt Size', type: 'choice', required: true, options: ['S', 'M', 'L', 'XL', 'XXL'] },
+                    { id: 'f-notes', label: 'Other thoughts or questions?', type: 'text', required: false, placeholder: 'Catatan tambahan' }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      })
+    }
+  ];
+
+  // ─── Quick Create from Google Forms Preset ─────────────────────────────────
+
+  const handleQuickCreateForm = async (preset: FormPresetItem) => {
+    setIsCreatingWorkspace(true);
+    try {
+      const config = preset.getConfig();
+      const slugBase = preset.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'form';
+      const uniqueSlug = `${slugBase}-${Date.now().toString().slice(-4)}`;
+
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          name: preset.title,
+          service_type: 'spark',
+          description: config.description || '',
+          template_id: preset.id,
+          slug: uniqueSlug,
+          draft_config: JSON.stringify(config)
+        })
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Gagal membuat workspace formulir.');
+      }
+
+      showToast('Formulir berhasil dibuat!');
+      onOpenBuilder(json);
+    } catch (err: any) {
+      showToast(err.message || 'Terjadi kesalahan.');
+    } finally {
+      setIsCreatingWorkspace(false);
+    }
+  };
+
+  // ─── Create Workspace via Full Template Selector Modal ────────────────────
+
   const handleCreateWithTemplate = async (data: {
     name: string;
     template_id: TemplateId;
@@ -119,7 +402,8 @@ export default function UserDashboard({
       const initialConfig = {
         ...tmpl.defaultConfig,
         eventName: data.name,
-        description: data.description || tmpl.defaultConfig.description
+        description: data.description || tmpl.defaultConfig.description,
+        blocks: data.template_id === 'blank' ? [] : (tmpl.defaultConfig.blocks || [])
       };
 
       const res = await fetch('/api/workspaces', {
@@ -150,7 +434,8 @@ export default function UserDashboard({
     }
   };
 
-  // Quick edit
+  // ─── Quick Edit ────────────────────────────────────────────────────────────
+
   const handleSaveEdit = async (data: { name: string; description: string; slug?: string }) => {
     if (!editingWs) return;
     setIsSavingEdit(true);
@@ -175,7 +460,8 @@ export default function UserDashboard({
     }
   };
 
-  // Delete
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
   const handleConfirmDelete = async () => {
     if (!deletingWs) return;
     setIsDeleting(true);
@@ -197,14 +483,23 @@ export default function UserDashboard({
     }
   };
 
-  // Copy URL
+  // ─── Copy URL ──────────────────────────────────────────────────────────────
+
   const handleCopyUrl = (slug: string) => {
     const url = `${window.location.origin}/#event/${slug}`;
     navigator.clipboard.writeText(url);
     showToast('Tautan website event disalin!');
   };
 
-  // Profile update
+  // ─── Open Dashboard Directly ───────────────────────────────────────────────
+
+  const handleOpenDashboardDirectly = (ws: Workspace) => {
+    sessionStorage.setItem('spark_default_tab', 'dashboard');
+    onOpenBuilder(ws);
+  };
+
+  // ─── Profile Update ────────────────────────────────────────────────────────
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError('');
@@ -229,20 +524,37 @@ export default function UserDashboard({
     }
   };
 
-  // Filtered workspaces for My Workspaces
-  const filteredWorkspaces = workspaces.filter((ws) => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = ws.name.toLowerCase().includes(q);
-      const matchSlug = (ws.slug || '').toLowerCase().includes(q);
-      const matchDesc = (ws.description || '').toLowerCase().includes(q);
-      if (!matchName && !matchSlug && !matchDesc) return false;
+  // ─── Format Date ───────────────────────────────────────────────────────────
+
+  const formatOpenedDate = (dateStr?: string) => {
+    if (!dateStr) return 'Baru saja';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return 'Baru saja';
     }
-    if (workspaceFilterTab === 'spark' && ws.service_type !== 'spark') return false;
-    if (workspaceFilterTab === 'expert' && ws.service_type === 'spark') return false;
-    if (statusFilter !== 'all' && ws.status !== statusFilter) return false;
-    return true;
-  });
+  };
+
+  // ─── Filtered Workspaces ───────────────────────────────────────────────────
+
+  const filteredWorkspaces = workspaces
+    .filter((ws) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = ws.name.toLowerCase().includes(q);
+        const matchSlug = (ws.slug || '').toLowerCase().includes(q);
+        const matchDesc = (ws.description || '').toLowerCase().includes(q);
+        if (!matchName && !matchSlug && !matchDesc) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortOrder === 'alpha') {
+        return a.name.localeCompare(b.name);
+      }
+      return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
+    });
 
   const totalCount = Math.max(workspaces.length, 6);
   const activeProjectsCount = 3;
@@ -274,11 +586,11 @@ export default function UserDashboard({
             </span>
           </button>
           <span className="px-2 py-0.5 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b] text-[10px] font-mono font-bold tracking-wider uppercase">
-            EVENT PLATFORM
+            WORKSPACE
           </span>
         </div>
 
-        {/* Center: Search input with shortcut / */}
+        {/* Center: Search input */}
         <div className="hidden md:flex items-center flex-1 max-w-md mx-6">
           <div className="relative w-full">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-[#8c93a0]">
@@ -288,28 +600,23 @@ export default function UserDashboard({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search workspaces, templates, events... /"
+              placeholder="Cari workspace, formulir, event... /"
               className="w-full pl-9 pr-8 py-2 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea] text-xs text-[#0b0c0e] placeholder-[#8c93a0] focus:bg-white focus:border-[#1f2de6] focus:outline-none transition-all"
             />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-white border border-[#e2e5ea] text-[10px] font-mono text-[#8c93a0]">
-              /
-            </span>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8c93a0] hover:text-[#0b0c0e]"
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
 
         {/* Right Actions: Notifications, Create Website, User Profile */}
         <div className="flex items-center gap-3">
-          {/* Notifications */}
-          <button
-            type="button"
-            className="w-9 h-9 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f8f9fb] text-[#585d6b] flex items-center justify-center transition-colors cursor-pointer relative"
-            aria-label="Notifikasi"
-            onClick={() => showToast('Tidak ada notifikasi baru.')}
-          >
-            <span className="material-symbols-outlined text-[18px]">notifications</span>
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[#1f2de6]"></span>
-          </button>
-
           {/* Create Website CTA Button */}
           <button
             type="button"
@@ -317,17 +624,17 @@ export default function UserDashboard({
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">add_circle</span>
-            <span>Create Website</span>
+            <span>Buat Website Baru</span>
           </button>
 
           {/* User Profile Pill */}
           <div className="flex items-center gap-2 pl-2 border-l border-[#e2e5ea]">
-            <div className="w-8 h-8 rounded-full bg-[#0b0c0e] text-white flex items-center justify-center font-heading font-bold text-xs shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#1f2de6] text-white flex items-center justify-center font-heading font-bold text-xs shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div className="hidden lg:flex flex-col text-left leading-tight">
               <span className="text-xs font-bold text-[#0b0c0e]">{user.name}</span>
-              <span className="text-[10px] font-mono text-[#8c93a0]">Pro Workspace</span>
+              <span className="text-[10px] font-mono text-[#8c93a0]">Panitia Event</span>
             </div>
             <button
               type="button"
@@ -355,11 +662,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('dashboard')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'dashboard'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'dashboard'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
                   <span>Dashboard</span>
@@ -369,11 +675,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('workspaces')}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'workspaces'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'workspaces'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined text-[18px]">layers</span>
@@ -404,11 +709,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('templates')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'templates'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'templates'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">dashboard_customize</span>
                   <span>Templates</span>
@@ -418,11 +722,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('expert')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'expert'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'expert'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">support_agent</span>
                   <span>Expert Services</span>
@@ -432,11 +735,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('subscription')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'subscription'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'subscription'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">credit_card</span>
                   <span>Subscription</span>
@@ -446,11 +748,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('settings')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'settings'
-                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
-                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'settings'
+                    ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                    : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">settings</span>
                   <span>Settings</span>
@@ -471,17 +772,13 @@ export default function UserDashboard({
             </div>
           </div>
 
-          {/* Sidebar Footer: Pro Plan Usage Card */}
+          {/* Sidebar Footer */}
           <div className="p-3 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea]">
-            <div className="flex items-center justify-between text-xs font-bold text-[#0b0c0e] mb-1.5">
-              <span className="font-heading">Pro Plan Usage</span>
-              <span className="font-mono text-[11px] text-[#1f2de6]">8/10 Live</span>
+            <div className="flex items-center justify-between text-xs font-bold text-[#0b0c0e] mb-1">
+              <span className="font-heading">Spark Pro</span>
+              <span className="font-mono text-[11px] text-[#1f2de6]">Aktif</span>
             </div>
-            {/* Progress Bar */}
-            <div className="w-full h-1.5 rounded-full bg-[#e2e5ea] overflow-hidden mb-1.5">
-              <div className="h-full bg-[#1f2de6] rounded-full" style={{ width: '80%' }}></div>
-            </div>
-            <p className="text-[10px] font-mono text-[#8c93a0]">2 site slots available</p>
+            <p className="text-[10px] font-mono text-[#8c93a0]">Semua fitur kustomisasi aktif</p>
           </div>
         </aside>
 
@@ -945,23 +1242,20 @@ export default function UserDashboard({
             </div>
           )}
 
-          {/* VIEW 2: MY WORKSPACES (Matching media_1794898032229_e867d2e7.png) */}
+          {/* VIEW 2: MY WORKSPACES (OVERHAULED: Google Forms Layout + Iventra Clean Design) */}
           {currentNav === 'workspaces' && (
             <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-              {/* Header Title & CTA */}
+              {/* Header Title & Quick Action */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold mb-1">
                     <span>Workspace Hub</span>
                     <span>•</span>
-                    <span className="text-[#585d6b]">Organisasi &amp; Kolaborasi</span>
+                    <span className="text-[#585d6b]">Formulir &amp; Website Event</span>
                   </div>
                   <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
                     My Workspaces
                   </h1>
-                  <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                    Pantau, edit, dan kelola seluruh website event Spark dan proyek Expert Anda dalam satu tempat.
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
@@ -971,7 +1265,7 @@ export default function UserDashboard({
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">sync</span>
-                    <span>Sync Status</span>
+                    <span>Sync</span>
                   </button>
 
                   <button
@@ -980,296 +1274,400 @@ export default function UserDashboard({
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
-                    <span>+ Create New Workspace</span>
+                    <span>+ Template Lengkap</span>
                   </button>
                 </div>
               </div>
 
-              {/* 4 Summary Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#585d6b] block">
-                    Total Ruang Kerja
-                  </span>
-                  <div className="mt-1 font-heading text-2xl font-black text-[#0b0c0e]">
-                    {workspaces.length > 0 ? workspaces.length : 6} Active
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#585d6b] block">
-                    Trafik Bulan Ini
-                  </span>
-                  <div className="mt-1 font-heading text-2xl font-black text-[#1f2de6]">
-                    42.8K
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#585d6b] block">
-                    Pendaftar Terverifikasi
-                  </span>
-                  <div className="mt-1 font-heading text-2xl font-black text-[#0b0c0e]">
-                    1,940
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#585d6b] block">
-                    Status Tim Expert
-                  </span>
-                  <div className="mt-1 font-heading text-2xl font-black text-emerald-700">
-                    2 Ongoing
-                  </div>
-                </div>
-              </div>
-
-              {/* Filter & Search Bar */}
-              <div className="p-3 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
-                {/* Search */}
-                <div className="relative w-full md:w-80">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[#8c93a0]">
-                    search
-                  </span>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama workspace, event, atau klien..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:bg-white focus:border-[#1f2de6] focus:outline-none"
-                  />
-                </div>
-
-                {/* Filter Tabs & Dropdowns */}
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                  <div className="flex items-center rounded-lg bg-[#f8f9fb] border border-[#e2e5ea] p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setWorkspaceFilterTab('all')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
-                        workspaceFilterTab === 'all'
-                          ? 'bg-white text-[#0b0c0e] shadow-2xs'
-                          : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                      }`}
-                    >
-                      All ({workspaces.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWorkspaceFilterTab('spark')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
-                        workspaceFilterTab === 'spark'
-                          ? 'bg-white text-[#0b0c0e] shadow-2xs'
-                          : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                      }`}
-                    >
-                      Spark Websites
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWorkspaceFilterTab('expert')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
-                        workspaceFilterTab === 'expert'
-                          ? 'bg-white text-[#0b0c0e] shadow-2xs'
-                          : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                      }`}
-                    >
-                      Expert Projects
-                    </button>
-                  </div>
-
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea] text-xs font-mono text-[#0b0c0e] focus:outline-none cursor-pointer"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="published">Published</option>
-                    <option value="draft">Draft</option>
-                  </select>
-
-                  <div className="flex items-center border border-[#e2e5ea] rounded-lg bg-[#f8f9fb] p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('grid')}
-                      className={`p-1.5 rounded transition-colors cursor-pointer ${
-                        viewMode === 'grid' ? 'bg-white text-[#1f2de6] shadow-2xs' : 'text-[#8c93a0]'
-                      }`}
-                      title="Tampilan Grid"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">grid_view</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('list')}
-                      className={`p-1.5 rounded transition-colors cursor-pointer ${
-                        viewMode === 'list' ? 'bg-white text-[#1f2de6] shadow-2xs' : 'text-[#8c93a0]'
-                      }`}
-                      title="Tampilan List"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">view_list</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Workspace Grid Cards (Image 3 Style) */}
-              {isLoading ? (
-                <div className="py-24 text-center">
-                  <div className="w-6 h-6 border-2 border-[#1f2de6] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-xs font-mono text-[#585d6b]">Memuat daftar workspace...</p>
-                </div>
-              ) : filteredWorkspaces.length === 0 ? (
-                <div className="p-12 text-center bg-white rounded-xl border border-[#e2e5ea]">
-                  <h4 className="font-heading text-base font-bold text-[#0b0c0e]">Belum Ada Workspace Ditemukan</h4>
-                  <p className="text-xs text-[#585d6b] mt-1 mb-4">
-                    Buat website event baru Anda sekarang dengan template yang siap pakai.
-                  </p>
+              {/* ─── SECTION 1: START A NEW FORM (Google Forms Top Bar in Iventra Style) ─── */}
+              <div className="rounded-2xl border border-[#e2e5ea] bg-white p-5 sm:p-6 shadow-2xs">
+                {/* Section Header */}
+                <div className="flex items-center justify-between pb-3.5">
+                  <h3 className="font-heading text-sm font-bold text-[#0b0c0e] tracking-tight">
+                    Mulai Formulir Baru
+                  </h3>
                   <button
                     type="button"
                     onClick={() => setIsTemplateModalOpen(true)}
-                    className="px-5 py-2.5 rounded-lg bg-[#1f2de6] text-white text-xs font-semibold"
+                    className="text-xs font-mono font-bold text-[#1f2de6] hover:underline flex items-center gap-1"
                   >
-                    + Buat Workspace Pertama
+                    <span>Galeri Template</span>
+                    <span className="material-symbols-outlined text-[15px]">unfold_more</span>
                   </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredWorkspaces.map((ws, idx) => {
-                    const isPublished = ws.status === 'published';
-                    const tmpl = getTemplateById(ws.template_id || 'tech-summit');
+
+                {/* 5 Preset Template Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                  {FORM_PRESETS.map((tmpl) => {
+                    const isBlank = tmpl.id === 'blank';
                     return (
                       <div
-                        key={ws.id}
-                        className="rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs flex flex-col justify-between card-lift"
+                        key={tmpl.id}
+                        onClick={() => handleQuickCreateForm(tmpl)}
+                        className="flex flex-col cursor-pointer group select-none"
                       >
-                        <div>
-                          {/* Visual Card Header */}
-                          <div className={`h-28 bg-gradient-to-tr ${tmpl.previewGradient} p-3.5 text-white flex flex-col justify-between relative`}>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-mono font-bold uppercase bg-black/40 backdrop-blur-xs px-2 py-0.5 rounded text-white">
-                                {ws.service_type === 'spark' ? 'Spark Pro' : 'Iventra Expert'}
-                              </span>
-                              <span
-                                className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded ${
-                                  isPublished ? 'bg-emerald-600 text-white' : 'bg-white text-[#0b0c0e]'
-                                }`}
-                              >
-                                {isPublished ? '● Published' : 'Draft'}
-                              </span>
-                            </div>
-                            <div className="text-[11px] font-mono text-white/90 truncate">
-                              {ws.slug ? `${ws.slug}.iventra.site` : 'Unpublished draft'}
-                            </div>
-                          </div>
-
-                          {/* Body Information */}
-                          <div className="p-4 space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <h3 className="font-heading text-base font-bold text-[#0b0c0e] tracking-tight line-clamp-1" title={ws.name}>
-                                {ws.name}
-                              </h3>
-                              <button
-                                type="button"
-                                onClick={() => setEditingWs(ws)}
-                                className="text-[#8c93a0] hover:text-[#0b0c0e] p-0.5 rounded"
-                                title="Edit info workspace"
-                              >
-                                <span className="material-symbols-outlined text-[16px]">more_vert</span>
-                              </button>
-                            </div>
-
-                            <p className="text-xs text-[#585d6b] line-clamp-2 min-h-[32px] leading-relaxed">
-                              {ws.description || tmpl.description}
-                            </p>
-
-                            {/* Metrics snippet */}
-                            <div className="pt-2 border-t border-[#f1f3f7] flex items-center justify-between text-xs font-mono">
-                              <div>
-                                <span className="text-[#8c93a0] block text-[10px]">Visitors</span>
-                                <strong className="text-[#0b0c0e]">2,450 <span className="text-emerald-700 text-[10px]">+18%</span></strong>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-[#8c93a0] block text-[10px]">Form Submissions</span>
-                                <strong className="text-[#0b0c0e]">482 teams</strong>
+                        {/* Card Box */}
+                        <div className="h-[124px] rounded-xl border border-[#e2e5ea] bg-[#f8f9fb] group-hover:bg-white group-hover:border-[#1f2de6] group-hover:shadow-md transition-all relative flex flex-col overflow-hidden">
+                          {isBlank ? (
+                            /* Google Plus Style with Iventra Palette */
+                            <div className="flex items-center justify-center w-full h-full bg-white">
+                              <div className="w-11 h-11 rounded-full bg-[#edf2ff] group-hover:bg-[#1f2de6] flex items-center justify-center transition-colors">
+                                <span className="material-symbols-outlined text-[26px] text-[#1f2de6] group-hover:text-white transition-colors">
+                                  add
+                                </span>
                               </div>
                             </div>
-                          </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="p-3 bg-[#f8f9fb] border-t border-[#e2e5ea] flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onOpenBuilder(ws)}
-                            className="flex-1 py-1.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer"
-                          >
-                            Edit Builder
-                          </button>
-
-                          {isPublished && ws.slug && (
-                            <button
-                              type="button"
-                              onClick={() => handleCopyUrl(ws.slug!)}
-                              className="px-2.5 py-1.5 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono transition-colors cursor-pointer"
-                              title="Salin Link"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">link</span>
-                            </button>
+                          ) : (
+                            /* Document Preview Mockup */
+                            <div className="w-full h-full p-2.5 flex flex-col">
+                              {/* Accent Top Strip */}
+                              <div
+                                className="h-2 rounded-t-sm w-full mb-2 shrink-0"
+                                style={{ backgroundColor: tmpl.accentColor }}
+                              />
+                              {/* Document Body */}
+                              <div className="bg-white rounded-md p-2 shadow-2xs border border-[#e2e5ea] flex-1 flex flex-col gap-1.5 overflow-hidden">
+                                <div className="h-2 bg-[#0b0c0e]/80 rounded-xs w-3/4 mb-0.5" />
+                                <div className="h-1 bg-[#e2e5ea] rounded-xs w-full" />
+                                <div className="h-1 bg-[#e2e5ea] rounded-xs w-2/3" />
+                                <div className="mt-1 pt-1 border-t border-[#f1f3f4] flex flex-col gap-1">
+                                  <div className="h-1.5 bg-[#8c93a0] rounded-xs w-1/2" />
+                                  <div className="h-2 border border-[#e2e5ea] rounded-xs w-full bg-[#f8f9fb]" />
+                                </div>
+                              </div>
+                            </div>
                           )}
-
-                          <button
-                            type="button"
-                            onClick={() => setDeletingWs(ws)}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-[#8c93a0] hover:text-red-600 transition-colors cursor-pointer"
-                            title="Hapus Workspace"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                          </button>
                         </div>
+
+                        {/* Title Label Underneath */}
+                        <span className="mt-2 text-xs font-semibold text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors truncate">
+                          {tmpl.title}
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-              )}
+              </div>
 
-              {/* Bottom Callout Banner */}
-              <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-[24px]">rocket_launch</span>
+              {/* ─── SECTION 2: RECENT FORMS (Google Forms Grid/List in Iventra Style) ─── */}
+              <div className="rounded-2xl border border-[#e2e5ea] bg-white p-5 sm:p-6 shadow-2xs">
+                {/* Toolbar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#e2e5ea]">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
+                      Formulir Terbaru
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b]">
+                      {filteredWorkspaces.length} formulir
+                    </span>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-heading text-base font-extrabold text-[#0b0c0e]">
-                        Butuh event website custom dengan fitur kompleks?
-                      </h4>
-                      <span className="text-[10px] font-mono font-bold uppercase bg-[#edf2ff] text-[#1f2de6] px-2 py-0.5 rounded">
-                        Expert Services
-                      </span>
+
+                  <div className="flex items-center gap-2">
+                    {/* Owned by anyone Dropdown */}
+                    <div className="relative" ref={filterRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e2e5ea] bg-[#f8f9fb] hover:bg-white text-xs font-mono font-bold text-[#0b0c0e] transition-colors cursor-pointer"
+                      >
+                        <span>{ownershipFilter === 'anyone' ? 'Semua Pemilik' : 'Milik Saya'}</span>
+                        <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+                      </button>
+
+                      {isFilterDropdownOpen && (
+                        <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-xl border border-[#e2e5ea] py-1 z-30 animate-fadeIn">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOwnershipFilter('anyone');
+                              setIsFilterDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs font-mono transition-colors ${ownershipFilter === 'anyone' ? 'bg-[#edf2ff] text-[#1f2de6] font-bold' : 'text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                              }`}
+                          >
+                            Semua Pemilik
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOwnershipFilter('me');
+                              setIsFilterDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs font-mono transition-colors ${ownershipFilter === 'me' ? 'bg-[#edf2ff] text-[#1f2de6] font-bold' : 'text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                              }`}
+                          >
+                            Milik Saya
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-[#585d6b] mt-1 max-w-2xl leading-relaxed">
-                      Tim developer dan desainer Iventra siap membangun custom event tech: integrasi RFID barcode gate, custom multi-tier payment, hingga streaming multi-room hanya dalam 7 hari kerja.
+
+                    {/* View Switcher: Grid / List */}
+                    <div className="flex items-center border border-[#e2e5ea] rounded-lg bg-[#f8f9fb] p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('grid')}
+                        className={`p-1.5 rounded transition-colors cursor-pointer ${viewMode === 'grid' ? 'bg-white text-[#1f2de6] shadow-2xs font-bold' : 'text-[#8c93a0]'
+                          }`}
+                        title="Tampilan Grid"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">grid_view</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('list')}
+                        className={`p-1.5 rounded transition-colors cursor-pointer ${viewMode === 'list' ? 'bg-white text-[#1f2de6] shadow-2xs font-bold' : 'text-[#8c93a0]'
+                          }`}
+                        title="Tampilan List"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">view_list</span>
+                      </button>
+                    </div>
+
+                    {/* Sort Order */}
+                    <button
+                      type="button"
+                      onClick={() => setSortOrder(sortOrder === 'date' ? 'alpha' : 'date')}
+                      className={`p-1.5 rounded-lg border border-[#e2e5ea] transition-colors cursor-pointer ${sortOrder === 'alpha' ? 'bg-[#edf2ff] text-[#1f2de6] border-[#1f2de6]/30' : 'bg-white text-[#585d6b] hover:bg-[#f8f9fb]'
+                        }`}
+                      title={sortOrder === 'date' ? 'Urutkan Berdasarkan Abjad (A-Z)' : 'Urutkan Berdasarkan Waktu'}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">sort_by_alpha</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                {isLoading ? (
+                  <div className="py-20 text-center">
+                    <div className="w-7 h-7 border-3 border-[#1f2de6] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <p className="text-xs font-mono text-[#585d6b]">Memuat formulir...</p>
+                  </div>
+                ) : filteredWorkspaces.length === 0 ? (
+                  /* Empty State */
+                  <div className="py-16 text-center flex flex-col items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-[#f4f5f8] flex items-center justify-center text-[#585d6b] mb-3">
+                      <span className="material-symbols-outlined text-[28px]">assignment</span>
+                    </div>
+                    <h4 className="font-heading text-sm font-bold text-[#0b0c0e]">Belum Ada Formulir Ditemukan</h4>
+                    <p className="text-xs text-[#585d6b] mt-1 mb-4">
+                      Klik salah satu template di atas untuk mulai membuat formulir pendaftaran.
                     </p>
                   </div>
-                </div>
+                ) : viewMode === 'grid' ? (
+                  /* ─── Grid View (Google Forms Card Architecture in Iventra Style) ─── */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-4">
+                    {filteredWorkspaces.map((ws) => {
+                      const isPublished = ws.status === 'published';
+                      const isMenuOpen = activeMenuWsId === ws.id;
 
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentNav('expert')}
-                    className="px-4 py-2 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer"
-                  >
-                    Jadwalkan Konsultasi Gratis
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentNav('expert')}
-                    className="px-4 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-                  >
-                    Pesan Proyek Expert
-                  </button>
-                </div>
+                      let bannerColor = '#1f2de6';
+                      if (ws.template_id === 'contact') bannerColor = '#059669';
+                      else if (ws.template_id === 'rsvp') bannerColor = '#2563eb';
+                      else if (ws.template_id === 'party') bannerColor = '#ea580c';
+                      else if (ws.template_id === 'tshirt') bannerColor = '#7c3aed';
+
+                      return (
+                        <div
+                          key={ws.id}
+                          onClick={() => onOpenBuilder(ws)}
+                          className="border border-[#e2e5ea] rounded-xl bg-white overflow-hidden hover:border-[#1f2de6] hover:shadow-md transition-all cursor-pointer flex flex-col group relative"
+                        >
+                          {/* Realtime Live Website Thumbnail (Google Docs style) */}
+                          <RealtimeWorkspaceThumbnail workspace={ws} />
+
+                          {/* Lower Metadata Area */}
+                          <div className="p-3.5 bg-white border-t border-[#e2e5ea] flex flex-col justify-between">
+                            {/* Title */}
+                            <div
+                              className="font-heading text-xs font-bold text-[#0b0c0e] truncate group-hover:text-[#1f2de6] transition-colors mb-2.5"
+                              title={ws.name}
+                            >
+                              {ws.name}
+                            </div>
+
+                            {/* Subrow */}
+                            <div className="flex items-center justify-between text-xs text-[#585d6b]">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {/* Iventra Blue Document Icon */}
+                                <div className="w-5 h-5 rounded bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center shrink-0">
+                                  <span className="material-symbols-outlined text-[13px]">assignment</span>
+                                </div>
+
+                                {isPublished && (
+                                  <span className="material-symbols-outlined text-[15px] text-emerald-600 shrink-0" title="Published">
+                                    public
+                                  </span>
+                                )}
+
+                                <span className="text-[10px] font-mono text-[#8c93a0] truncate">
+                                  {formatOpenedDate(ws.updated_at || ws.created_at)}
+                                </span>
+                              </div>
+
+                              {/* 3-dots Menu Button */}
+                              <div className="relative ws-card-menu">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuWsId(isMenuOpen ? null : ws.id);
+                                  }}
+                                  className="w-7 h-7 rounded-lg hover:bg-[#f4f5f8] text-[#585d6b] hover:text-[#0b0c0e] flex items-center justify-center transition-colors cursor-pointer"
+                                  title="Opsi workspace"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">more_vert</span>
+                                </button>
+
+                                {/* Dropdown Menu */}
+                                {isMenuOpen && (
+                                  <div className="absolute right-0 bottom-8 w-44 bg-white rounded-xl shadow-xl border border-[#e2e5ea] py-1.5 z-40 animate-fadeIn text-xs text-[#0b0c0e]">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuWsId(null);
+                                        onOpenBuilder(ws);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2 hover:bg-[#f8f9fb] flex items-center gap-2.5 transition-colors cursor-pointer font-semibold"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">edit_document</span>
+                                      <span>Buka Canvas</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuWsId(null);
+                                        handleOpenDashboardDirectly(ws);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2 hover:bg-[#f8f9fb] flex items-center gap-2.5 transition-colors cursor-pointer font-semibold"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px] text-emerald-600">table_chart</span>
+                                      <span>Buka Dashboard</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuWsId(null);
+                                        setEditingWs(ws);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2 hover:bg-[#f8f9fb] flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px] text-[#585d6b]">drive_file_rename_outline</span>
+                                      <span>Ganti Nama</span>
+                                    </button>
+
+                                    {isPublished && ws.slug && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveMenuWsId(null);
+                                          handleCopyUrl(ws.slug!);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#f8f9fb] flex items-center gap-2.5 transition-colors cursor-pointer"
+                                      >
+                                        <span className="material-symbols-outlined text-[16px] text-[#585d6b]">link</span>
+                                        <span>Salin Tautan</span>
+                                      </button>
+                                    )}
+
+                                    <div className="border-t border-[#f1f3f4] my-1" />
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuWsId(null);
+                                        setDeletingWs(ws);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2.5 transition-colors cursor-pointer font-semibold"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                                      <span>Hapus</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* ─── List View (Clean Table) ─── */
+                  <div className="border border-[#e2e5ea] rounded-xl overflow-hidden mt-4">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-[#e2e5ea] bg-[#f8f9fb] text-[#585d6b] font-mono uppercase text-[10px]">
+                          <th className="py-3 px-4">Nama Formulir</th>
+                          <th className="py-3 px-4 hidden sm:table-cell">Status</th>
+                          <th className="py-3 px-4">Terakhir Diperbarui</th>
+                          <th className="py-3 px-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#e2e5ea]">
+                        {filteredWorkspaces.map((ws) => (
+                          <tr
+                            key={ws.id}
+                            onClick={() => onOpenBuilder(ws)}
+                            className="hover:bg-[#f8f9fb] transition-colors cursor-pointer group"
+                          >
+                            <td className="py-3.5 px-4 flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-lg bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-[15px]">assignment</span>
+                              </div>
+                              <span className="font-heading font-bold text-xs text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors truncate max-w-xs sm:max-w-md">
+                                {ws.name}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 hidden sm:table-cell">
+                              <span
+                                className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded ${ws.status === 'published'
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  : 'bg-[#f4f5f8] text-[#585d6b] border border-[#e2e5ea]'
+                                  }`}
+                              >
+                                {ws.status === 'published' ? '● Live' : 'Draft'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-[11px] font-mono text-[#585d6b]">
+                              {formatOpenedDate(ws.updated_at || ws.created_at)}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenDashboardDirectly(ws);
+                                }}
+                                className="px-3 py-1 rounded-lg border border-[#e2e5ea] hover:bg-white text-[#0b0c0e] text-xs font-mono font-bold mr-2 cursor-pointer"
+                              >
+                                Dashboard
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingWs(ws);
+                                }}
+                                className="p-1 rounded-lg hover:bg-red-50 text-[#8c93a0] hover:text-red-600 transition-colors cursor-pointer"
+                                title="Hapus"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1293,7 +1691,7 @@ export default function UserDashboard({
                 {SPARK_TEMPLATES.map((tmpl) => (
                   <div
                     key={tmpl.id}
-                    className="rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs flex flex-col justify-between card-lift"
+                    className="rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs flex flex-col justify-between"
                   >
                     <div>
                       <div className={`h-36 bg-gradient-to-tr ${tmpl.previewGradient} p-4 text-white flex flex-col justify-between`}>
@@ -1314,7 +1712,7 @@ export default function UserDashboard({
                         <p className="text-xs text-[#585d6b] leading-relaxed">
                           {tmpl.description}
                         </p>
-                        <div className="pt-2 border-t border-[#f1f3f7]">
+                        <div className="pt-2 border-t border-[#f1f3f4]">
                           <span className="text-[10px] font-mono uppercase text-[#8c93a0] block">Rekomendasi Format:</span>
                           <span className="text-xs font-semibold text-[#0b0c0e]">{tmpl.recommendedFor}</span>
                         </div>

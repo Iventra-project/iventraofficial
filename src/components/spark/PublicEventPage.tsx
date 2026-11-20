@@ -154,7 +154,7 @@ export default function PublicEventPage({ slug, onBackToHome, onOpenBuilder }: P
       )}
 
       {/* Render Website */}
-      <SparkEventRenderer config={data.config} isPreviewMode={data.isPreview} />
+      <SparkEventRenderer config={data.config} isPreviewMode={data.isPreview} slug={data.slug || slug} />
     </div>
   );
 }

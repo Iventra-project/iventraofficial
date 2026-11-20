@@ -13,118 +13,121 @@ export default function SparkSubscriptionModal({
 
   const features = [
     {
-      icon: 'dynamic_form',
       title: 'Formulir Pendaftaran Internal Tanpa Batas',
-      desc: 'Bangun formulir pendaftaran langsung di dalam Iventra tanpa bergantung Google Form/Typeform eksternal.'
+      desc: 'Bangun formulir pendaftaran langsung di dalam Iventra tanpa bergantung pihak ketiga.'
     },
     {
-      icon: 'table_view',
       title: 'Database & Ekspor Excel/Spreadsheet Otomatis',
-      desc: 'Semua submisi dan data peserta tersimpan rapi dan dapat diunduh kapan saja dalam format CSV/Excel.'
+      desc: 'Semua submisi dan data peserta tersimpan rapi dan dapat diunduh kapan saja.'
     },
     {
-      icon: 'send',
       title: 'Otomasi WhatsApp Reminder & Blast H-1',
-      desc: 'Kirim notifikasi tiket QR Code dan pengingat jadwal langsung ke nomor WA peserta secara resmi.'
+      desc: 'Kirim notifikasi tiket QR Code dan pengingat jadwal langsung ke nomor WA peserta.'
     },
     {
-      icon: 'workspace_premium',
       title: 'E-Sertifikat Digital dengan QR Validasi',
       desc: 'Terbitkan sertifikat ber-SK secara instan sesuai presensi kehadiran peserta.'
     },
     {
-      icon: 'language',
       title: 'Custom Domain Institusi / Kampus',
-      desc: 'Gunakan domain sendiri seperti eventkampus.ac.id atau namaevent.id untuk citra kepanitiaan profesional.'
+      desc: 'Gunakan domain sendiri seperti eventkampus.ac.id atau namaevent.id untuk citra resmi.'
     }
   ];
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="spark-sub-title"
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-[#191930]/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Modal Dialog */}
-      <div className="relative w-full max-w-xl bg-white rounded-xl shadow-2xl border border-[#e2e5ea] overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
-        {/* Top Header Banner */}
-        <div className="relative bg-[#0b0c0e] text-white p-6 sm:p-8 shrink-0 border-b border-white/10">
+      {/* Modal Card - Clean White & Subtle Blue Gradient */}
+      <div className="relative w-full max-w-lg bg-gradient-to-b from-blue-50/60 via-white to-white rounded-3xl shadow-2xl border border-blue-100 overflow-hidden animate-[scaleUp_0.15s_ease-out] flex flex-col max-h-[90vh]">
+        {/* Top Header */}
+        <div className="p-6 sm:p-7 pb-4 shrink-0 relative border-b border-blue-50">
           {/* Close button */}
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer font-mono text-sm"
-            aria-label="Tutup modal"
+            className="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+            aria-label="Tutup"
           >
-            ✕
+            <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
 
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/10 text-white text-[10px] font-mono uppercase tracking-wider mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#1f2de6]"></span>
-            <span>Iventra Spark Subscription</span>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-3 py-1 rounded-full bg-blue-600 text-white text-[11px] font-bold shadow-xs">
+              Spark Pro
+            </span>
+            <span className="text-xs font-bold text-blue-600">
+              Paket Komite &amp; Event
+            </span>
           </div>
 
-          <h2 id="spark-sub-title" className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
+          <h2 id="spark-sub-title" className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
             Buka Fitur Premium Spark
           </h2>
-          <p className="text-white/60 text-xs sm:text-sm mt-1 max-w-md">
-            Tingkatkan efisiensi kepanitiaan dengan sistem form terpadu, WhatsApp bot pengingat, dan presensi QR otomatis.
+          <p className="text-slate-500 text-xs sm:text-sm mt-1">
+            Sistem formulir terpadu, WhatsApp reminder, dan validasi tiket QR.
           </p>
         </div>
 
         {/* Feature List */}
-        <div className="p-6 sm:p-8 overflow-y-auto space-y-4 flex-1 bg-white">
-          <div className="text-xs font-mono font-bold text-[#585d6b] uppercase tracking-wider">
-            Fitur Unggulan Termasuk:
+        <div className="p-6 sm:p-7 overflow-y-auto space-y-3 flex-1 bg-white">
+          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            Fitur Termasuk:
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-2.5">
             {features.map((feat, idx) => (
               <div
                 key={idx}
-                className="p-3.5 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] flex items-start gap-3.5"
+                className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-200 transition-colors flex items-start gap-3 shadow-2xs"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#0b0c0e] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">
-                  0{idx + 1}
+                <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="material-symbols-outlined text-[15px] font-bold">check</span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-[#0b0c0e] tracking-tight">{feat.title}</h4>
-                  <p className="text-xs text-[#585d6b] mt-0.5 leading-relaxed">{feat.desc}</p>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-snug">
+                    {feat.title}
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    {feat.desc}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Pricing Info Card */}
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-4">
+          {/* Special Price Note */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/60 flex items-center justify-between gap-3 mt-4">
             <div>
-              <span className="text-xs font-mono font-bold text-emerald-900 uppercase tracking-wide">
-                Paket Mahasiswa &amp; BEM
+              <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wide block">
+                Khusus Mahasiswa &amp; BEM
               </span>
-              <p className="text-xs text-emerald-800 mt-0.5">
-                Konsultasikan kebutuhan peserta untuk penyesuaian kuota &amp; harga khusus kepanitiaan kampus.
+              <p className="text-[11px] text-blue-800 mt-0.5">
+                Konsultasikan kebutuhan peserta untuk penyesuaian kuota acara.
               </p>
             </div>
-            <span className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-mono font-bold shrink-0">
+            <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-[10px] font-bold shrink-0">
               Diskon Komunitas
             </span>
           </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-5 sm:p-6 bg-[#f8f9fb] border-t border-[#e2e5ea] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+        <div className="p-5 sm:p-6 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-[#e2e5ea] text-xs font-mono font-bold text-[#585d6b] hover:bg-white transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-white transition-colors cursor-pointer"
           >
             Nanti Dulu
           </button>
@@ -137,10 +140,10 @@ export default function SparkSubscriptionModal({
                 onConsultationRequest();
               }
             }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs sm:text-sm font-semibold tracking-tight shadow-xs transition-all active:scale-[0.99] cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
           >
             <span>Konsultasi Aktivasi Paket</span>
-            <span className="font-mono text-xs">→</span>
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
           </button>
         </div>
       </div>
