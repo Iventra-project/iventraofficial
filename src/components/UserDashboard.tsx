@@ -118,6 +118,142 @@ interface FormPresetItem {
   getConfig: () => EventConfig;
 }
 
+export interface PaymentNotification {
+  id: string;
+  name: string;
+  event: string;
+  amount: string;
+  time: string;
+  status: string;
+}
+
+export const INCOMING_PAYMENTS: PaymentNotification[] = [
+  {
+    id: 'pay-1',
+    name: 'Budi Prasetyo (Team Alpha)',
+    event: 'Hackathon Nusantara 2025',
+    amount: 'Rp 250.000',
+    time: '4 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-2',
+    name: 'Rizky Alamsyah',
+    event: 'Webinar UI/UX Masterclass',
+    amount: 'Rp 75.000',
+    time: '18 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-3',
+    name: 'Dina Kusuma (Inovasi Muda)',
+    event: 'Hackathon Nusantara 2025',
+    amount: 'Rp 250.000',
+    time: '42 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-4',
+    name: 'Ahmad Fauzi',
+    event: 'Tech Conference Asia 2026',
+    amount: 'Rp 450.000',
+    time: '1 jam lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-5',
+    name: 'Nadhira Salsabila',
+    event: 'Webinar UI/UX Masterclass',
+    amount: 'Rp 75.000',
+    time: '2 jam lalu',
+    status: 'Lunas',
+  },
+];
+
+export interface EventNotification {
+  id: string;
+  category: 'registration' | 'payment' | 'quota' | 'submission' | 'broadcast' | 'system';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  linkNav?: DashboardSidebarNav;
+  linkLabel?: string;
+  icon: string;
+}
+
+export const DEFAULT_NOTIFICATIONS: EventNotification[] = [
+  {
+    id: 'notif-1',
+    category: 'registration',
+    title: 'Pendaftaran Peserta Baru',
+    message: 'Tim "Garuda Innovate" telah mendaftar pada kompetisi Web Design & UI/UX Challenge (Kategori Mahasiswa).',
+    timestamp: '10 menit yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Buka Workspace',
+    icon: 'how_to_reg'
+  },
+  {
+    id: 'notif-2',
+    category: 'payment',
+    title: 'Pembayaran Tiket Terverifikasi',
+    message: 'Pembayaran tiket Early Bird Rp 150.000 atas nama Muhammad Rizky telah berhasil diverifikasi via Payment Gateway.',
+    timestamp: '45 menit yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Lihat Detail Peserta',
+    icon: 'payments'
+  },
+  {
+    id: 'notif-3',
+    category: 'quota',
+    title: 'Peringatan Kuota Tiket Menipis',
+    message: 'Slot pendaftaran seminar "AI & Future Technology" tersisa 12 tiket lagi (88% terisi). Segera tinjau alokasi kuota.',
+    timestamp: '2 jam yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Kelola Kuota',
+    icon: 'warning'
+  },
+  {
+    id: 'notif-4',
+    category: 'submission',
+    title: 'Submisi Berkas Karya Masuk',
+    message: 'Tim "Bina Nusantara Tech" telah mengunggah proposal final dan mockup desain (PDF 4.2 MB) pada sistem penjurian.',
+    timestamp: '4 jam yang lalu',
+    read: true,
+    linkNav: 'workspaces',
+    linkLabel: 'Periksa Berkas',
+    icon: 'upload_file'
+  },
+  {
+    id: 'notif-5',
+    category: 'broadcast',
+    title: 'WhatsApp Gateway Blast Berhasil',
+    message: 'Sebanyak 142 tiket QR dan instruksi teknis babak penyisihan sukses dikirimkan ke nomor WhatsApp peserta.',
+    timestamp: 'Kemarin, 16:30',
+    read: true,
+    icon: 'send'
+  },
+  {
+    id: 'notif-6',
+    category: 'system',
+    title: 'Fitur Spark Builder v2.4 Aktif',
+    message: 'Formulir registrasi multi-tahap dan custom domain SSL gratis kini dapat langsung dikonfigurasi di setiap workspace.',
+    timestamp: '2 hari yang lalu',
+    read: true,
+    linkNav: 'subscription',
+    linkLabel: 'Cek Fitur Spark',
+    icon: 'auto_awesome'
+  }
+];
+
+export function getWorkspaceVisitorCount(ws: Workspace, index: number): string {
+  const visitors = [3480, 1920, 850, 4200, 680];
+  return (visitors[index % visitors.length]).toLocaleString('id-ID');
+}
+
 export default function UserDashboard({
   user,
   token,
@@ -154,6 +290,241 @@ export default function UserDashboard({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
+
+  // Regional Preferences
+  const [eventTimezone, setEventTimezone] = useState('Asia/Jakarta');
+  const [eventCurrency, setEventCurrency] = useState('IDR');
+
+  // Subscription State (Interactive & Persisted)
+  const [subscription, setSubscription] = useState<SubscriptionState>(() => {
+    const saved = localStorage.getItem('iventra_subscription');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    const pDate = new Date();
+    pDate.setDate(pDate.getDate() - 9); // default purchased 9 days ago
+    const eDate = new Date(pDate);
+    eDate.setDate(eDate.getDate() + 30); // 30 days active
+
+    return {
+      planName: 'Spark Pro Workspace',
+      priceFormatted: 'Rp 150.000 / bulan',
+      billingCycle: 'Bulanan',
+      status: 'active',
+      purchasedAt: pDate.toISOString(),
+      expiresAt: eDate.toISOString(),
+      totalTokens: 10,
+      usedTokens: 8,
+      paymentMethod: 'QRIS Instant / Virtual Account',
+      autoRenew: true,
+      invoices: [
+        {
+          id: 'INV-202611-0941',
+          date: pDate.toISOString(),
+          planName: 'Spark Pro (30 Hari) + 10 Token Event',
+          amount: 'Rp 150.000',
+          status: 'Lunas'
+        },
+        {
+          id: 'INV-202610-0287',
+          date: new Date(pDate.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          planName: 'Spark Pro (30 Hari) + 10 Token Event',
+          amount: 'Rp 150.000',
+          status: 'Lunas'
+        }
+      ]
+    };
+  });
+
+  const handleRenewSubscription = (durationDays: number, planName: string, price: string, extraTokens: number = 0) => {
+    const now = new Date();
+    const currentExpire = new Date(subscription.expiresAt).getTime();
+    const baseDate = currentExpire > now.getTime() ? new Date(subscription.expiresAt) : now;
+    const newExpire = durationDays > 0 
+      ? new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
+      : new Date(subscription.expiresAt);
+
+    const newInvoice: InvoiceItem = {
+      id: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`,
+      date: now.toISOString(),
+      planName: durationDays > 0 ? `${planName} (${durationDays} Hari)` : `${planName}`,
+      amount: price,
+      status: 'Lunas'
+    };
+
+    const updatedSub: SubscriptionState = {
+      ...subscription,
+      planName: durationDays > 0 ? planName : subscription.planName,
+      priceFormatted: durationDays > 0 ? `${price} / ${durationDays >= 180 ? 'semester' : 'bulan'}` : subscription.priceFormatted,
+      purchasedAt: now.toISOString(),
+      expiresAt: newExpire.toISOString(),
+      totalTokens: subscription.totalTokens + extraTokens,
+      invoices: [newInvoice, ...subscription.invoices]
+    };
+
+    setSubscription(updatedSub);
+    localStorage.setItem('iventra_subscription', JSON.stringify(updatedSub));
+    setIsSubscriptionModalOpen(false);
+    showToast(`Paket ${planName} aktif! Masa berlaku hingga ${formatIndonesianDate(newExpire.toISOString())}.`);
+  };
+
+  const handleToggleAutoRenew = () => {
+    const nextVal = !subscription.autoRenew;
+    const updated = { ...subscription, autoRenew: nextVal };
+    setSubscription(updated);
+    localStorage.setItem('iventra_subscription', JSON.stringify(updated));
+    showToast(nextVal ? 'Perpanjangan otomatis diaktifkan.' : 'Perpanjangan otomatis dinonaktifkan.');
+  };
+
+  type SettingsTab = 'profile' | 'security' | 'notifications' | 'account';
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('profile');
+
+  // Committee / Organization info
+  const [organization, setOrganization] = useState(() => {
+    return localStorage.getItem('iventra_org_name') || 'SMK Telkom Sidoarjo';
+  });
+  const [committeeRole, setCommitteeRole] = useState(() => {
+    return localStorage.getItem('iventra_committee_role') || 'Ketua Panitia / Project Lead';
+  });
+  const [phone, setPhone] = useState(() => {
+    return localStorage.getItem('iventra_phone') || '+62 812-3456-7890';
+  });
+  const [bio, setBio] = useState(() => {
+    return localStorage.getItem('iventra_bio') || 'Penanggung jawab operasional pendaftaran dan integrasi sistem tiket Iventra.';
+  });
+
+  // Password Change State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  // 2FA State
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(() => {
+    return localStorage.getItem('iventra_2fa_enabled') === 'true';
+  });
+
+  // Notification Preferences
+  const [notifNewRegistration, setNotifNewRegistration] = useState(true);
+  const [notifTicketLow, setNotifTicketLow] = useState(true);
+  const [notifWaTickets, setNotifWaTickets] = useState(true);
+  const [notifDailyRecap, setNotifDailyRecap] = useState(true);
+  const [notifSystemBroadcast, setNotifSystemBroadcast] = useState(false);
+  const [notifSuccess, setNotifSuccess] = useState('');
+
+  // Dedicated Event Notifications State & Handlers
+  const [notifications, setNotifications] = useState<EventNotification[]>(() => {
+    const saved = localStorage.getItem('iventra_event_notifications');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return DEFAULT_NOTIFICATIONS;
+  });
+
+  const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'registration' | 'payment' | 'system'>('all');
+
+  const unreadNotifsCount = notifications.filter(n => !n.read).length;
+
+  const saveNotifications = (newNotifs: EventNotification[]) => {
+    setNotifications(newNotifs);
+    try {
+      localStorage.setItem('iventra_event_notifications', JSON.stringify(newNotifs));
+    } catch {}
+  };
+
+  const handleMarkAllAsRead = () => {
+    const updated = notifications.map(n => ({ ...n, read: true }));
+    saveNotifications(updated);
+    showToast('Semua notifikasi ditandai telah dibaca.');
+  };
+
+  const handleToggleRead = (id: string, forceRead?: boolean) => {
+    const updated = notifications.map(n => {
+      if (n.id === id) {
+        return { ...n, read: forceRead !== undefined ? forceRead : !n.read };
+      }
+      return n;
+    });
+    saveNotifications(updated);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    const updated = notifications.filter(n => n.id !== id);
+    saveNotifications(updated);
+  };
+
+  const handleClearAllNotifications = () => {
+    saveNotifications([]);
+    showToast('Daftar notifikasi telah dibersihkan.');
+  };
+
+  const filteredNotifications = notifications.filter(n => {
+    if (notifFilter === 'unread') return !n.read;
+    if (notifFilter === 'registration') return n.category === 'registration' || n.category === 'submission';
+    if (notifFilter === 'payment') return n.category === 'payment' || n.category === 'quota';
+    if (notifFilter === 'system') return n.category === 'broadcast' || n.category === 'system';
+    return true;
+  });
+
+  // Password update
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (newPassword.length < 8) {
+      setPasswordError('Password baru minimal 8 karakter.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Konfirmasi password tidak cocok.');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordSuccess('Password berhasil diperbarui.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        showToast('Password akun berhasil diperbarui.');
+      } else {
+        setPasswordError(json.error || 'Gagal memperbarui password.');
+      }
+    } catch {
+      setPasswordError('Gagal terhubung ke server.');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  // 2FA Toggle
+  const handleToggle2FA = () => {
+    const nextVal = !twoFactorEnabled;
+    setTwoFactorEnabled(nextVal);
+    localStorage.setItem('iventra_2fa_enabled', String(nextVal));
+    showToast(nextVal ? 'Verifikasi 2 langkah diaktifkan.' : 'Verifikasi 2 langkah dinonaktifkan.');
+  };
+
+  // Save Notifications
+  const handleSaveNotifications = (e: React.FormEvent) => {
+    e.preventDefault();
+    setNotifSuccess('Preferensi notifikasi berhasil disimpan.');
+    showToast('Preferensi notifikasi disimpan.');
+  };
 
   const filterRef = useRef<HTMLDivElement>(null);
 
@@ -692,17 +1063,13 @@ export default function UserDashboard({
           </div>
         </div>
 
-        {/* Right Actions: Notifications & User Profile */}
+        {/* Right Actions: Notifications, Create Website, User Profile */}
         <div className="flex items-center gap-3">
           {/* Create Website CTA Button */}
           <button
             type="button"
-            onClick={() => {
-              setCurrentNav('settings');
-              setSettingsTab('profile');
-            }}
-            className="flex items-center gap-2 pl-2 border-l border-[#e2e5ea] hover:opacity-85 transition-opacity cursor-pointer text-left focus:outline-none"
-            title="Buka Pengaturan Profil Panitia"
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">add_circle</span>
             <span>Buat Website Baru</span>
@@ -717,7 +1084,15 @@ export default function UserDashboard({
               <span className="text-xs font-bold text-[#0b0c0e]">{user.name}</span>
               <span className="text-[10px] font-mono text-[#8c93a0]">Panitia Event</span>
             </div>
-          </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="ml-1 w-7 h-7 rounded hover:bg-[#f4f5f8] text-[#585d6b] hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer"
+              title="Keluar dari akun"
+            >
+              <span className="material-symbols-outlined text-[16px]">logout</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1174,7 +1549,7 @@ export default function UserDashboard({
                     >
                       {/* 1. Gambar Website Aslinya Realtime (ala Google Docs) */}
                       <div className="w-48 sm:w-56 h-full shrink-0 border-r border-[#e2e5ea] bg-slate-950 overflow-hidden relative">
-                        <RealtimeWebsiteThumbnail ws={ws} />
+                        <RealtimeWorkspaceThumbnail workspace={ws} />
                         <span className="absolute bottom-2 left-2 text-[9px] font-mono font-bold uppercase bg-black/70 backdrop-blur-xs text-white px-1.5 py-0.5 rounded z-20">
                           {ws.service_type === 'expert' ? 'Expert' : 'Spark Pro'}
                         </span>
@@ -1655,39 +2030,137 @@ export default function UserDashboard({
             </div>
           )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {SPARK_TEMPLATES.map((tmpl) => (
-                  <div
-                    key={tmpl.id}
-                    className="rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs flex flex-col justify-between"
+          {/* VIEW 4: EXPERT SERVICES */}
+          {currentNav === 'expert' && (
+            <div className="space-y-6 max-w-5xl mx-auto animate-fadeIn">
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
+                  Bespoke Engineering
+                </span>
+                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                  Iventra Expert Services
+                </h1>
+                <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
+                  Layanan pengembangan sistem khusus kepanitiaan: kompetisi bertingkat, dewan juri independen, payment gateway resmi, dan WhatsApp blast automation.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center font-mono font-bold text-sm">
+                    01
+                  </div>
+                  <h3 className="font-heading text-lg font-bold text-[#0b0c0e]">
+                    Iventra Flow (Lomba &amp; Penjurian Bertingkat)
+                  </h3>
+                  <p className="text-xs text-[#585d6b] leading-relaxed">
+                    Arsitektur khusus pendaftaran tim, submisi proposal PDF terenkripsi, portal dewan juri dengan form rubrik nilai rahasia, serta pengumuman finalis otomatis.
+                  </p>
+                  <ul className="text-xs font-mono space-y-2 text-[#0b0c0e]">
+                    <li>✓ Portal Juri dengan akses terenkripsi</li>
+                    <li>✓ Dashboard rekap ranking otomatis</li>
+                    <li>✓ Upload berkas karya tim hingga 50MB</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setIsSubscriptionModalOpen(true)}
+                    className="w-full py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
                   >
-                    <div>
-                      <div className={`h-36 bg-gradient-to-tr ${tmpl.previewGradient} p-4 text-white flex flex-col justify-between`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-black/40 px-2 py-0.5 rounded text-white">
-                            {tmpl.category}
-                          </span>
-                          <span className="text-[10px] font-mono font-bold uppercase bg-white text-[#0b0c0e] px-2 py-0.5 rounded">
-                            {tmpl.badge}
-                          </span>
-                        </div>
-                        <h3 className="font-heading text-lg font-bold text-white">
-                          {tmpl.name}
-                        </h3>
+                    Konsultasikan Alur Lomba →
+                  </button>
+                </div>
+
+                <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-mono font-bold text-sm">
+                    02
+                  </div>
+                  <h3 className="font-heading text-lg font-bold text-[#0b0c0e]">
+                    WhatsApp Gateway &amp; QR Attendance Gate
+                  </h3>
+                  <p className="text-xs text-[#585d6b] leading-relaxed">
+                    Pengiriman blast e-tiket QR terenkripsi via nomor WhatsApp resmi, auto-reminder H-3 dan H-1, serta scanner presensi pintu masuk dengan latensi &lt;0.5 detik.
+                  </p>
+                  <ul className="text-xs font-mono space-y-2 text-[#0b0c0e]">
+                    <li>✓ Tiket QR unik anti-duplikasi</li>
+                    <li>✓ Scanner kamera tanpa instalasi aplikasi</li>
+                    <li>✓ Export log kehadiran realtime siap LPJ</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setIsSubscriptionModalOpen(true)}
+                    className="w-full py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
+                  >
+                    Aktivasi WhatsApp Bot →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW 5: SUBSCRIPTION */}
+          {currentNav === 'subscription' && (() => {
+            const metrics = getSubscriptionMetrics(subscription);
+            return (
+              <div className="space-y-6 max-w-4xl mx-auto animate-fadeIn pb-12">
+                <div>
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
+                    Billing &amp; Kuota Token
+                  </span>
+                  <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                    Status Berlangganan &amp; Kuota Event
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
+                    Kelola masa aktif lisensi Spark Pro, tanggal jatuh tempo perpanjangan, dan sisa token website acara Anda.
+                  </p>
+                </div>
+
+                {/* Main Subscription Card */}
+                <div className="p-6 sm:p-7 rounded-2xl bg-white border border-[#e2e5ea] shadow-2xs space-y-6">
+                  {/* Top Header */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-[#e2e5ea]">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${metrics.badgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${metrics.pulseDot} animate-pulse`}></span>
+                          {metrics.statusText}
+                        </span>
+                        <span className="text-xs font-mono text-[#8c93a0]">
+                          Siklus {subscription.billingCycle}
+                        </span>
                       </div>
                       <h2 className="font-heading text-xl sm:text-2xl font-black text-[#0b0c0e] tracking-tight">
                         {subscription.planName}
                       </h2>
                     </div>
 
-                      <div className="p-5 space-y-2.5">
-                        <p className="text-xs text-[#585d6b] leading-relaxed">
-                          {tmpl.description}
-                        </p>
-                        <div className="pt-2 border-t border-[#f1f3f4]">
-                          <span className="text-[10px] font-mono uppercase text-[#8c93a0] block">Rekomendasi Format:</span>
-                          <span className="text-xs font-semibold text-[#0b0c0e]">{tmpl.recommendedFor}</span>
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="font-heading text-xl sm:text-2xl font-black text-[#0b0c0e]">
+                          {subscription.priceFormatted}
+                        </span>
+                        <span className="text-[10px] font-mono text-[#8c93a0] block">
+                          Metode: {subscription.paymentMethod}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsSubscriptionModalOpen(true)}
+                        className="px-4 py-2 rounded-xl bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                      >
+                        Perpanjang / Upgrade
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 4 Metrics Strip */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* 1. Tanggal Beli */}
+                    <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-1.5">
+                      <div className="flex items-center gap-2 text-[#8c93a0]">
+                        <span className="material-symbols-outlined text-[16px]">
+                          calendar_today
+                        </span>
+                        <span className="font-mono text-[11px] uppercase tracking-wide">Tanggal Langganan</span>
                       </div>
                       <strong className="text-sm font-heading font-bold text-[#0b0c0e] block">
                         {formatIndonesianDate(subscription.purchasedAt)}

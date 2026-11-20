@@ -8,6 +8,7 @@ import {
   createUser,
   getOrCreateOAuthUser,
   updateUserProfile,
+  updateUserPassword,
   type OAuthProvider
 } from './db.ts';
 

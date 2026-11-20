@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 interface SparkSubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,23 +8,22 @@ interface SparkSubscriptionModalProps {
 export default function SparkSubscriptionModal({
   isOpen,
   onClose,
-  onConsultationRequest,
-  onRenewSuccess
+  onConsultationRequest
 }: SparkSubscriptionModalProps) {
   if (!isOpen) return null;
 
   const features = [
     {
       title: 'Formulir Pendaftaran Internal Tanpa Batas',
-      desc: 'Bangun formulir pendaftaran langsung di dalam Iventra tanpa bergantung pihak ketiga.'
+      desc: 'Bangun formulir pendaftaran langsung di dalam Iventra tanpa bergantung Google Form/Typeform eksternal.'
     },
     {
       title: 'Database & Ekspor Excel/Spreadsheet Otomatis',
-      desc: 'Semua submisi dan data peserta tersimpan rapi dan dapat diunduh kapan saja.'
+      desc: 'Semua submisi dan data peserta tersimpan rapi dan dapat diunduh kapan saja dalam format CSV/Excel.'
     },
     {
       title: 'Otomasi WhatsApp Reminder & Blast H-1',
-      desc: 'Kirim notifikasi tiket QR Code dan pengingat jadwal langsung ke nomor WA peserta.'
+      desc: 'Kirim notifikasi tiket QR Code dan pengingat jadwal langsung ke nomor WA peserta secara resmi.'
     },
     {
       title: 'E-Sertifikat Digital dengan QR Validasi',
@@ -34,38 +31,9 @@ export default function SparkSubscriptionModal({
     },
     {
       title: 'Custom Domain Institusi / Kampus',
-      desc: 'Gunakan domain sendiri seperti eventkampus.ac.id atau namaevent.id untuk citra resmi.'
+      desc: 'Gunakan domain sendiri seperti eventkampus.ac.id atau namaevent.id untuk citra kepanitiaan profesional.'
     }
   ];
-
-  const currentTier = tiers.find((t) => t.id === selectedTier) || tiers[0];
-
-  const getTargetExpiryFormatted = (days: number) => {
-    if (days === 0) return 'Mengikuti periode aktif berjalan';
-    const target = new Date();
-    target.setDate(target.getDate() + days);
-    return new Intl.DateTimeFormat('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }).format(target);
-  };
-
-  const handlePay = () => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      if (onRenewSuccess) {
-        onRenewSuccess(
-          currentTier.durationDays,
-          currentTier.name,
-          currentTier.price,
-          currentTier.tokens
-        );
-      }
-      onClose();
-    }, 1200);
-  };
 
   return (
     <div
@@ -96,10 +64,10 @@ export default function SparkSubscriptionModal({
           </button>
 
           <div className="flex items-center gap-2 mb-2">
-            <span className="px-3 py-1 rounded-full bg-blue-600 text-white text-[11px] font-bold shadow-xs">
+            <span className="px-3 py-1 rounded-full bg-[#1f2de6] text-white text-[11px] font-bold shadow-xs">
               Spark Pro
             </span>
-            <span className="text-xs font-bold text-blue-600">
+            <span className="text-xs font-bold text-[#1f2de6]">
               Paket Komite &amp; Event
             </span>
           </div>
@@ -108,7 +76,7 @@ export default function SparkSubscriptionModal({
             Buka Fitur Premium Spark
           </h2>
           <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Sistem formulir terpadu, WhatsApp reminder, dan validasi tiket QR.
+            Tingkatkan efisiensi kepanitiaan dengan sistem form terpadu, WhatsApp bot pengingat, dan presensi QR otomatis.
           </p>
         </div>
 
@@ -124,23 +92,9 @@ export default function SparkSubscriptionModal({
                 key={idx}
                 className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-200 transition-colors flex items-start gap-3 shadow-2xs"
               >
-                <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="material-symbols-outlined text-[15px] font-bold">check</span>
+                <div className="w-6 h-6 rounded-full bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs">
+                  0{idx + 1}
                 </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('va')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
-                  paymentMethod === 'va'
-                    ? 'border-[#1f2de6] bg-[#f8f9ff] ring-1 ring-[#1f2de6]'
-                    : 'border-[#e2e5ea] bg-white hover:border-[#cbd5e1]'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[20px] text-[#585d6b]">
-                  account_balance
-                </span>
                 <div>
                   <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-snug">
                     {feat.title}
@@ -149,8 +103,8 @@ export default function SparkSubscriptionModal({
                     {feat.desc}
                   </p>
                 </div>
-              </button>
-            </div>
+              </div>
+            ))}
           </div>
 
           {/* Special Price Note */}
@@ -163,7 +117,7 @@ export default function SparkSubscriptionModal({
                 Konsultasikan kebutuhan peserta untuk penyesuaian kuota acara.
               </p>
             </div>
-            <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-[10px] font-bold shrink-0">
+            <span className="px-2.5 py-1 rounded-full bg-[#1f2de6] text-white text-[10px] font-bold shrink-0">
               Diskon Komunitas
             </span>
           </div>
@@ -176,7 +130,7 @@ export default function SparkSubscriptionModal({
             onClick={onClose}
             className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-white transition-colors cursor-pointer"
           >
-            Batal
+            Nanti Dulu
           </button>
 
           <button
@@ -187,7 +141,7 @@ export default function SparkSubscriptionModal({
                 onConsultationRequest();
               }
             }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
           >
             <span>Konsultasi Aktivasi Paket</span>
             <span className="material-symbols-outlined text-[16px]">arrow_forward</span>

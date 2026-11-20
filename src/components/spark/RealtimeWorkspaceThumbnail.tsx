@@ -75,7 +75,7 @@ export default function RealtimeWorkspaceThumbnail({ workspace, className = '' }
     }
 
     // Fallback to template preset if draft_config is empty
-    const tmpl = getTemplateById(workspace.template_id);
+    const tmpl = workspace.template_id ? getTemplateById(workspace.template_id) : null;
     if (tmpl) {
       return {
         ...tmpl.defaultConfig,
