@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Logo from './Logo.tsx';
 import type { AuthUser } from './AuthPage.tsx';
+import GalleryHoverCarousel from '../../components/ui/gallery-hover-carousel.tsx';
 import TemplateSelectorModal from './spark/TemplateSelectorModal.tsx';
 import SparkSubscriptionModal from './spark/SparkSubscriptionModal.tsx';
-import { getTemplateById, type TemplateId, SPARK_TEMPLATES } from '../types/builder.ts';
+import SparkEventRenderer from './spark/SparkEventRenderer.tsx';
+import CompetitionConsultationChat from './CompetitionConsultationChat.tsx';
+import { getTemplateById, type TemplateId, SPARK_TEMPLATES, type EventConfig } from '../types/builder.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +26,74 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface InvoiceItem {
+  id: string;
+  date: string;
+  planName: string;
+  amount: string;
+  status: 'Lunas' | 'Menunggu';
+}
+
+export interface SubscriptionState {
+  planName: string;
+  priceFormatted: string;
+  billingCycle: string;
+  status: 'active' | 'expiring_soon' | 'expired';
+  purchasedAt: string;
+  expiresAt: string;
+  totalTokens: number;
+  usedTokens: number;
+  paymentMethod: string;
+  autoRenew: boolean;
+  invoices: InvoiceItem[];
+}
+
+export function formatIndonesianDate(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(d);
+  } catch {
+    return isoString;
+  }
+}
+
+export function getSubscriptionMetrics(sub: SubscriptionState) {
+  const now = Date.now();
+  const purchaseTime = new Date(sub.purchasedAt).getTime();
+  const expireTime = new Date(sub.expiresAt).getTime();
+  const totalDuration = Math.max(1, expireTime - purchaseTime);
+  const elapsed = Math.max(0, now - purchaseTime);
+  const remainingMs = Math.max(0, expireTime - now);
+  const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+  const progressPercent = Math.min(100, Math.max(0, Math.round((elapsed / totalDuration) * 100)));
+
+  let statusText = 'Aktif';
+  let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  let pulseDot = 'bg-emerald-500';
+
+  if (remainingDays <= 0) {
+    statusText = 'Kedaluwarsa';
+    badgeClass = 'bg-red-50 text-red-700 border-red-200';
+    pulseDot = 'bg-red-500';
+  } else if (remainingDays <= 5) {
+    statusText = 'Segera Berakhir';
+    badgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+    pulseDot = 'bg-amber-500';
+  }
+
+  return {
+    remainingDays,
+    progressPercent,
+    statusText,
+    badgeClass,
+    pulseDot
+  };
+}
+
 interface UserDashboardProps {
   user: AuthUser;
   token: string;
@@ -38,7 +109,186 @@ export type DashboardSidebarNav =
   | 'templates'
   | 'expert'
   | 'subscription'
+  | 'notifications'
   | 'settings';
+
+export interface EventNotification {
+  id: string;
+  category: 'registration' | 'payment' | 'quota' | 'submission' | 'broadcast' | 'system';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  linkNav?: DashboardSidebarNav;
+  linkLabel?: string;
+  icon: string;
+}
+
+const DEFAULT_NOTIFICATIONS: EventNotification[] = [
+  {
+    id: 'notif-1',
+    category: 'registration',
+    title: 'Pendaftaran Peserta Baru',
+    message: 'Tim "Garuda Innovate" telah mendaftar pada kompetisi Web Design & UI/UX Challenge (Kategori Mahasiswa).',
+    timestamp: '10 menit yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Buka Workspace',
+    icon: 'how_to_reg'
+  },
+  {
+    id: 'notif-2',
+    category: 'payment',
+    title: 'Pembayaran Tiket Terverifikasi',
+    message: 'Pembayaran tiket Early Bird Rp 150.000 atas nama Muhammad Rizky telah berhasil diverifikasi via Payment Gateway.',
+    timestamp: '45 menit yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Lihat Detail Peserta',
+    icon: 'payments'
+  },
+  {
+    id: 'notif-3',
+    category: 'quota',
+    title: 'Peringatan Kuota Tiket Menipis',
+    message: 'Slot pendaftaran seminar "AI & Future Technology" tersisa 12 tiket lagi (88% terisi). Segera tinjau alokasi kuota.',
+    timestamp: '2 jam yang lalu',
+    read: false,
+    linkNav: 'workspaces',
+    linkLabel: 'Kelola Kuota',
+    icon: 'warning'
+  },
+  {
+    id: 'notif-4',
+    category: 'submission',
+    title: 'Submisi Berkas Karya Masuk',
+    message: 'Tim "Bina Nusantara Tech" telah mengunggah proposal final dan mockup desain (PDF 4.2 MB) pada sistem penjurian.',
+    timestamp: '4 jam yang lalu',
+    read: true,
+    linkNav: 'workspaces',
+    linkLabel: 'Periksa Berkas',
+    icon: 'upload_file'
+  },
+  {
+    id: 'notif-5',
+    category: 'broadcast',
+    title: 'WhatsApp Gateway Blast Berhasil',
+    message: 'Sebanyak 142 tiket QR dan instruksi teknis babak penyisihan sukses dikirimkan ke nomor WhatsApp peserta.',
+    timestamp: 'Kemarin, 16:30',
+    read: true,
+    icon: 'send'
+  },
+  {
+    id: 'notif-6',
+    category: 'system',
+    title: 'Fitur Spark Builder v2.4 Aktif',
+    message: 'Formulir registrasi multi-tahap dan custom domain SSL gratis kini dapat langsung dikonfigurasi di setiap workspace.',
+    timestamp: '2 hari yang lalu',
+    read: true,
+    linkNav: 'subscription',
+    linkLabel: 'Cek Fitur Spark',
+    icon: 'auto_awesome'
+  }
+];
+
+export interface PaymentNotification {
+  id: string;
+  name: string;
+  event: string;
+  amount: string;
+  time: string;
+  status: string;
+}
+
+const INCOMING_PAYMENTS: PaymentNotification[] = [
+  {
+    id: 'pay-1',
+    name: 'Budi Prasetyo (Team Alpha)',
+    event: 'Hackathon Nusantara 2025',
+    amount: 'Rp 250.000',
+    time: '4 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-2',
+    name: 'Rizky Alamsyah',
+    event: 'Webinar UI/UX Masterclass',
+    amount: 'Rp 75.000',
+    time: '18 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-3',
+    name: 'Dina Kusuma (Inovasi Muda)',
+    event: 'Hackathon Nusantara 2025',
+    amount: 'Rp 250.000',
+    time: '42 mnt lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-4',
+    name: 'Ahmad Fauzi',
+    event: 'Tech Conference Asia 2026',
+    amount: 'Rp 450.000',
+    time: '1 jam lalu',
+    status: 'Lunas',
+  },
+  {
+    id: 'pay-5',
+    name: 'Nadhira Salsabila',
+    event: 'Webinar UI/UX Masterclass',
+    amount: 'Rp 75.000',
+    time: '2 jam lalu',
+    status: 'Lunas',
+  },
+];
+
+function parseWorkspaceConfig(ws: Workspace): EventConfig {
+  try {
+    if (ws.published_config) {
+      return JSON.parse(ws.published_config);
+    }
+    if (ws.draft_config) {
+      return JSON.parse(ws.draft_config);
+    }
+  } catch {}
+  const tmpl = getTemplateById(ws.template_id || 'tech-summit');
+  return {
+    ...tmpl.defaultConfig,
+    eventName: ws.name || tmpl.defaultConfig.eventName,
+  };
+}
+
+function RealtimeWebsiteThumbnail({ ws }: { ws: Workspace }) {
+  const config = useMemo(
+    () => parseWorkspaceConfig(ws),
+    [ws.draft_config, ws.published_config, ws.name, ws.template_id]
+  );
+
+  return (
+    <div className="w-full h-full bg-slate-950 overflow-hidden relative select-none pointer-events-none">
+      {/* Mini Browser Bar */}
+      <div className="absolute top-0 left-0 right-0 h-4 bg-[#0b0c0e]/95 backdrop-blur-xs z-10 flex items-center px-2 gap-1 border-b border-white/10">
+        <div className="w-1.5 h-1.5 rounded-full bg-red-500/80" />
+        <div className="w-1.5 h-1.5 rounded-full bg-amber-500/80" />
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
+        <span className="text-[7.5px] font-mono text-white/50 ml-1 truncate">
+          {ws.slug ? `${ws.slug}.iventra.live` : 'preview.iventra.live'}
+        </span>
+      </div>
+
+      {/* Actual Scaled Live Website Preview (like Google Docs miniature) */}
+      <div className="absolute top-4 left-0 w-[580px] h-[380px] origin-top-left transform scale-[0.38] overflow-hidden bg-white">
+        <SparkEventRenderer config={config} isPreviewMode={true} />
+      </div>
+    </div>
+  );
+}
+
+function getWorkspaceVisitorCount(ws: Workspace, index: number): string {
+  const visitors = [3480, 1920, 850, 4200, 680];
+  return (visitors[index % visitors.length]).toLocaleString('id-ID');
+}
 
 export default function UserDashboard({
   user,
@@ -70,9 +320,191 @@ export default function UserDashboard({
 
   // Settings State
   const [profileName, setProfileName] = useState(user.name);
+  const [displayedName, setDisplayedName] = useState(user.name);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
+
+  type SettingsTab = 'profile' | 'security' | 'notifications' | 'account';
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('profile');
+
+  // Committee / Organization info
+  const [organization, setOrganization] = useState(() => {
+    return localStorage.getItem('iventra_org_name') || 'SMK Telkom Sidoarjo';
+  });
+  const [committeeRole, setCommitteeRole] = useState(() => {
+    return localStorage.getItem('iventra_committee_role') || 'Ketua Panitia / Project Lead';
+  });
+  const [phone, setPhone] = useState(() => {
+    return localStorage.getItem('iventra_phone') || '+62 812-3456-7890';
+  });
+  const [bio, setBio] = useState(() => {
+    return localStorage.getItem('iventra_bio') || 'Penanggung jawab operasional pendaftaran dan integrasi sistem tiket Iventra.';
+  });
+
+  // Password Change State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  // 2FA State
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(() => {
+    return localStorage.getItem('iventra_2fa_enabled') === 'true';
+  });
+
+  // Notification Preferences
+  const [notifNewRegistration, setNotifNewRegistration] = useState(true);
+  const [notifTicketLow, setNotifTicketLow] = useState(true);
+  const [notifWaTickets, setNotifWaTickets] = useState(true);
+  const [notifDailyRecap, setNotifDailyRecap] = useState(true);
+  const [notifSystemBroadcast, setNotifSystemBroadcast] = useState(false);
+  const [notifSuccess, setNotifSuccess] = useState('');
+
+  // Regional Preferences
+  const [eventTimezone, setEventTimezone] = useState('Asia/Jakarta');
+  const [eventCurrency, setEventCurrency] = useState('IDR');
+
+  // Subscription State (Interactive & Persisted)
+  const [subscription, setSubscription] = useState<SubscriptionState>(() => {
+    const saved = localStorage.getItem('iventra_subscription');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    const pDate = new Date();
+    pDate.setDate(pDate.getDate() - 9); // default purchased 9 days ago
+    const eDate = new Date(pDate);
+    eDate.setDate(eDate.getDate() + 30); // 30 days active
+
+    return {
+      planName: 'Spark Pro Workspace',
+      priceFormatted: 'Rp 150.000 / bulan',
+      billingCycle: 'Bulanan',
+      status: 'active',
+      purchasedAt: pDate.toISOString(),
+      expiresAt: eDate.toISOString(),
+      totalTokens: 10,
+      usedTokens: 8,
+      paymentMethod: 'QRIS Instant / Virtual Account',
+      autoRenew: true,
+      invoices: [
+        {
+          id: 'INV-202611-0941',
+          date: pDate.toISOString(),
+          planName: 'Spark Pro (30 Hari) + 10 Token Event',
+          amount: 'Rp 150.000',
+          status: 'Lunas'
+        },
+        {
+          id: 'INV-202610-0287',
+          date: new Date(pDate.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          planName: 'Spark Pro (30 Hari) + 10 Token Event',
+          amount: 'Rp 150.000',
+          status: 'Lunas'
+        }
+      ]
+    };
+  });
+
+  const handleRenewSubscription = (durationDays: number, planName: string, price: string, extraTokens: number = 0) => {
+    const now = new Date();
+    const currentExpire = new Date(subscription.expiresAt).getTime();
+    const baseDate = currentExpire > now.getTime() ? new Date(subscription.expiresAt) : now;
+    const newExpire = durationDays > 0 
+      ? new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
+      : new Date(subscription.expiresAt);
+
+    const newInvoice: InvoiceItem = {
+      id: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`,
+      date: now.toISOString(),
+      planName: durationDays > 0 ? `${planName} (${durationDays} Hari)` : `${planName}`,
+      amount: price,
+      status: 'Lunas'
+    };
+
+    const updatedSub: SubscriptionState = {
+      ...subscription,
+      planName: durationDays > 0 ? planName : subscription.planName,
+      priceFormatted: durationDays > 0 ? `${price} / ${durationDays >= 180 ? 'semester' : 'bulan'}` : subscription.priceFormatted,
+      purchasedAt: now.toISOString(),
+      expiresAt: newExpire.toISOString(),
+      totalTokens: subscription.totalTokens + extraTokens,
+      invoices: [newInvoice, ...subscription.invoices]
+    };
+
+    setSubscription(updatedSub);
+    localStorage.setItem('iventra_subscription', JSON.stringify(updatedSub));
+    setIsSubscriptionModalOpen(false);
+    showToast(`Paket ${planName} aktif! Masa berlaku hingga ${formatIndonesianDate(newExpire.toISOString())}.`);
+  };
+
+  const handleToggleAutoRenew = () => {
+    const nextVal = !subscription.autoRenew;
+    const updated = { ...subscription, autoRenew: nextVal };
+    setSubscription(updated);
+    localStorage.setItem('iventra_subscription', JSON.stringify(updated));
+    showToast(nextVal ? 'Perpanjangan otomatis diaktifkan.' : 'Perpanjangan otomatis dinonaktifkan.');
+  };
+
+  // Dedicated Event Notifications State & Handlers
+  const [notifications, setNotifications] = useState<EventNotification[]>(() => {
+    const saved = localStorage.getItem('iventra_event_notifications');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return DEFAULT_NOTIFICATIONS;
+  });
+
+  const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'registration' | 'payment' | 'system'>('all');
+
+  const unreadNotifsCount = notifications.filter(n => !n.read).length;
+
+  const saveNotifications = (newNotifs: EventNotification[]) => {
+    setNotifications(newNotifs);
+    try {
+      localStorage.setItem('iventra_event_notifications', JSON.stringify(newNotifs));
+    } catch {}
+  };
+
+  const handleMarkAllAsRead = () => {
+    const updated = notifications.map(n => ({ ...n, read: true }));
+    saveNotifications(updated);
+    showToast('Semua notifikasi ditandai telah dibaca.');
+  };
+
+  const handleToggleRead = (id: string, forceRead?: boolean) => {
+    const updated = notifications.map(n => {
+      if (n.id === id) {
+        return { ...n, read: forceRead !== undefined ? forceRead : !n.read };
+      }
+      return n;
+    });
+    saveNotifications(updated);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    const updated = notifications.filter(n => n.id !== id);
+    saveNotifications(updated);
+  };
+
+  const handleClearAllNotifications = () => {
+    saveNotifications([]);
+    showToast('Daftar notifikasi telah dibersihkan.');
+  };
+
+  const filteredNotifications = notifications.filter(n => {
+    if (notifFilter === 'unread') return !n.read;
+    if (notifFilter === 'registration') return n.category === 'registration' || n.category === 'submission';
+    if (notifFilter === 'payment') return n.category === 'payment' || n.category === 'quota';
+    if (notifFilter === 'system') return n.category === 'broadcast' || n.category === 'system';
+    return true;
+  });
 
   const authHeaders = {
     'Content-Type': 'application/json',
@@ -218,7 +650,13 @@ export default function UserDashboard({
       });
       const json = await res.json();
       if (res.ok) {
-        setProfileSuccess('Profil berhasil diperbarui!');
+        setProfileSuccess('Profil dan identitas panitia berhasil disimpan.');
+        setDisplayedName(profileName.trim());
+        localStorage.setItem('iventra_org_name', organization.trim());
+        localStorage.setItem('iventra_committee_role', committeeRole);
+        localStorage.setItem('iventra_phone', phone.trim());
+        localStorage.setItem('iventra_bio', bio.trim());
+        showToast('Profil panitia berhasil diperbarui.');
       } else {
         setProfileError(json.error || 'Gagal memperbarui profil.');
       }
@@ -227,6 +665,61 @@ export default function UserDashboard({
     } finally {
       setIsSavingProfile(false);
     }
+  };
+
+  // Password update
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (newPassword.length < 8) {
+      setPasswordError('Password baru minimal 8 karakter.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Konfirmasi password tidak cocok.');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordSuccess('Password berhasil diperbarui.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        showToast('Password akun berhasil diperbarui.');
+      } else {
+        setPasswordError(json.error || 'Gagal memperbarui password.');
+      }
+    } catch {
+      setPasswordError('Gagal terhubung ke server.');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  // 2FA Toggle
+  const handleToggle2FA = () => {
+    const nextVal = !twoFactorEnabled;
+    setTwoFactorEnabled(nextVal);
+    localStorage.setItem('iventra_2fa_enabled', String(nextVal));
+    showToast(nextVal ? 'Verifikasi 2 langkah diaktifkan.' : 'Verifikasi 2 langkah dinonaktifkan.');
+  };
+
+  // Save Notifications
+  const handleSaveNotifications = (e: React.FormEvent) => {
+    e.preventDefault();
+    setNotifSuccess('Preferensi notifikasi berhasil disimpan.');
+    showToast('Preferensi notifikasi disimpan.');
+    setTimeout(() => setNotifSuccess(''), 3000);
   };
 
   // Filtered workspaces for My Workspaces
@@ -260,8 +753,8 @@ export default function UserDashboard({
 
       {/* ─── 1. TOP HEADER (Unified Global Bar) ─────────────────────────────── */}
       <header className="sticky top-0 z-40 bg-white border-b border-[#e2e5ea] h-16 flex items-center px-4 sm:px-6 justify-between select-none shrink-0">
-        {/* Left: Brand + Badge */}
-        <div className="flex items-center gap-3 w-60 shrink-0">
+        {/* Left: Brand */}
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={onBackToSite}
@@ -273,71 +766,48 @@ export default function UserDashboard({
               IVENTRA
             </span>
           </button>
-          <span className="px-2 py-0.5 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b] text-[10px] font-mono font-bold tracking-wider uppercase">
-            EVENT PLATFORM
-          </span>
         </div>
 
-        {/* Center: Search input with shortcut / */}
-        <div className="hidden md:flex items-center flex-1 max-w-md mx-6">
-          <div className="relative w-full">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-[#8c93a0]">
-              search
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search workspaces, templates, events... /"
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea] text-xs text-[#0b0c0e] placeholder-[#8c93a0] focus:bg-white focus:border-[#1f2de6] focus:outline-none transition-all"
-            />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-white border border-[#e2e5ea] text-[10px] font-mono text-[#8c93a0]">
-              /
-            </span>
-          </div>
-        </div>
-
-        {/* Right Actions: Notifications, Create Website, User Profile */}
+        {/* Right Actions: Notifications & User Profile */}
         <div className="flex items-center gap-3">
-          {/* Notifications */}
+          {/* Notifications Button (Navigates directly to dedicated Notifications Page) */}
           <button
             type="button"
-            className="w-9 h-9 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f8f9fb] text-[#585d6b] flex items-center justify-center transition-colors cursor-pointer relative"
-            aria-label="Notifikasi"
-            onClick={() => showToast('Tidak ada notifikasi baru.')}
+            onClick={() => setCurrentNav('notifications')}
+            className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-colors cursor-pointer relative ${
+              currentNav === 'notifications'
+                ? 'bg-[#edf2ff] text-[#1f2de6] border-[#1f2de6]'
+                : 'bg-white hover:bg-[#f8f9fb] text-[#585d6b] hover:text-[#1f2de6] border-[#e2e5ea]'
+            }`}
+            aria-label="Notifikasi Event"
+            title="Buka Pusat Notifikasi"
           >
             <span className="material-symbols-outlined text-[18px]">notifications</span>
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[#1f2de6]"></span>
+            {unreadNotifsCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1f2de6] text-white text-[9px] font-mono font-bold flex items-center justify-center shadow-2xs">
+                {unreadNotifsCount}
+              </span>
+            )}
           </button>
 
-          {/* Create Website CTA Button */}
+          {/* User Profile Pill (Clickable -> Settings Profile) */}
           <button
             type="button"
-            onClick={() => setIsTemplateModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+            onClick={() => {
+              setCurrentNav('settings');
+              setSettingsTab('profile');
+            }}
+            className="flex items-center gap-2 pl-2 border-l border-[#e2e5ea] hover:opacity-85 transition-opacity cursor-pointer text-left focus:outline-none"
+            title="Buka Pengaturan Profil Panitia"
           >
-            <span className="material-symbols-outlined text-[16px]">add_circle</span>
-            <span>Create Website</span>
-          </button>
-
-          {/* User Profile Pill */}
-          <div className="flex items-center gap-2 pl-2 border-l border-[#e2e5ea]">
-            <div className="w-8 h-8 rounded-full bg-[#0b0c0e] text-white flex items-center justify-center font-heading font-bold text-xs shrink-0">
-              {user.name.charAt(0).toUpperCase()}
+            <div className="w-8 h-8 rounded-full bg-[#0b0c0e] hover:bg-[#1f2de6] text-white flex items-center justify-center font-heading font-bold text-xs shrink-0 transition-colors shadow-2xs">
+              {displayedName.charAt(0).toUpperCase()}
             </div>
             <div className="hidden lg:flex flex-col text-left leading-tight">
-              <span className="text-xs font-bold text-[#0b0c0e]">{user.name}</span>
+              <span className="text-xs font-bold text-[#0b0c0e] hover:text-[#1f2de6] transition-colors">{displayedName}</span>
               <span className="text-[10px] font-mono text-[#8c93a0]">Pro Workspace</span>
             </div>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="ml-1 w-7 h-7 rounded hover:bg-[#f4f5f8] text-[#585d6b] hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer"
-              title="Keluar dari akun"
-            >
-              <span className="material-symbols-outlined text-[16px]">logout</span>
-            </button>
-          </div>
+          </button>
         </div>
       </header>
 
@@ -442,7 +912,28 @@ export default function UserDashboard({
                   <span>Subscription</span>
                 </button>
 
-                {/* 7. Settings */}
+                {/* 7. Notifikasi */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentNav('notifications')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    currentNav === 'notifications'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[18px]">notifications</span>
+                    <span>Notifikasi</span>
+                  </div>
+                  {unreadNotifsCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-[#1f2de6] text-white text-[10px] font-mono font-bold">
+                      {unreadNotifsCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 8. Settings */}
                 <button
                   type="button"
                   onClick={() => setCurrentNav('settings')}
@@ -455,73 +946,16 @@ export default function UserDashboard({
                   <span className="material-symbols-outlined text-[18px]">settings</span>
                   <span>Settings</span>
                 </button>
-
-                {/* Admin Console shortcut if available */}
-                {onOpenAdmin && (
-                  <button
-                    type="button"
-                    onClick={onOpenAdmin}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-mono font-bold text-[#585d6b] hover:text-[#1f2de6] hover:bg-[#f8f9fb] transition-all cursor-pointer mt-2 border-t border-[#e2e5ea] pt-3"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
-                    <span>Admin Console</span>
-                  </button>
-                )}
               </nav>
             </div>
-          </div>
-
-          {/* Sidebar Footer: Pro Plan Usage Card */}
-          <div className="p-3 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea]">
-            <div className="flex items-center justify-between text-xs font-bold text-[#0b0c0e] mb-1.5">
-              <span className="font-heading">Pro Plan Usage</span>
-              <span className="font-mono text-[11px] text-[#1f2de6]">8/10 Live</span>
-            </div>
-            {/* Progress Bar */}
-            <div className="w-full h-1.5 rounded-full bg-[#e2e5ea] overflow-hidden mb-1.5">
-              <div className="h-full bg-[#1f2de6] rounded-full" style={{ width: '80%' }}></div>
-            </div>
-            <p className="text-[10px] font-mono text-[#8c93a0]">2 site slots available</p>
           </div>
         </aside>
 
         {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
         <main className="flex-1 overflow-y-auto bg-[#f8f9fb] p-6 lg:p-8">
-          {/* VIEW 1: DASHBOARD (Matching media_1794898032219_5c434358.png) */}
+          {/* VIEW 1: DASHBOARD (Clean Executive Overview) */}
           {currentNav === 'dashboard' && (
             <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-              {/* Header Greeting */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                    Selamat Datang Kembali, {user.name.split(' ')[0]}! 👋
-                  </h1>
-                  <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                    Kelola website event Anda dan pantau performa pendaftaran secara real-time.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentNav('expert')}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-semibold tracking-tight shadow-xs transition-all cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">support_agent</span>
-                    <span>Pesan Iventra Expert</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsTemplateModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">add</span>
-                    <span>Buat Website Baru</span>
-                  </button>
-                </div>
-              </div>
-
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* 1. Total Workspaces */}
@@ -570,54 +1004,93 @@ export default function UserDashboard({
                   <div className="w-full h-1 bg-emerald-500 rounded-full mt-3"></div>
                 </div>
 
-                {/* 4. Subscription Status */}
-                <div className="p-5 rounded-xl bg-white border border-[#e2e5ea] flex flex-col justify-between shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold text-[#585d6b] uppercase">Subscription Status</span>
-                    <span className="material-symbols-outlined text-[20px] text-amber-600">workspace_premium</span>
-                  </div>
-                  <div className="mt-3 flex items-baseline justify-between">
-                    <div>
-                      <span className="font-heading text-xl font-black text-[#0b0c0e]">Spark Pro</span>
-                      <span className="ml-2 text-[10px] font-mono font-bold bg-[#edf2ff] text-[#1f2de6] px-1.5 py-0.5 rounded">
-                        Aktif
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentNav('subscription')}
-                      className="text-xs font-mono text-[#1f2de6] hover:underline"
+                {/* 4. Total Limit Kunjungan Website */}
+                {(() => {
+                  const used = 192;
+                  const max = 1000;
+                  const percent = Math.min(100, Math.round((used / max) * 100));
+                  const isNearLimit = percent >= 80;
+                  const isWarning = percent >= 65 && percent < 80;
+
+                  const colorClass = isNearLimit
+                    ? 'text-red-600'
+                    : isWarning
+                    ? 'text-amber-600'
+                    : 'text-[#0b0c0e]';
+
+                  const badgeBg = isNearLimit
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : isWarning
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+                  const barColor = isNearLimit
+                    ? 'bg-red-500'
+                    : isWarning
+                    ? 'bg-amber-500'
+                    : 'bg-[#1f2de6]';
+
+                  const iconColor = isNearLimit
+                    ? 'text-red-600'
+                    : isWarning
+                    ? 'text-amber-600'
+                    : 'text-[#1f2de6]';
+
+                  return (
+                    <div
+                      className={`p-5 rounded-xl bg-white border ${
+                        isNearLimit ? 'border-red-200' : 'border-[#e2e5ea]'
+                      } flex flex-col justify-between shadow-2xs`}
                     >
-                      Kelola
-                    </button>
-                  </div>
-                  <p className="text-[10px] font-mono text-[#8c93a0] mt-2">Diperbarui Nov 2025 • Billing tahunan</p>
-                </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-[#585d6b] uppercase">
+                          Limit Kunjungan Website
+                        </span>
+                        <span className={`material-symbols-outlined text-[20px] ${iconColor}`}>
+                          data_usage
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-baseline justify-between gap-1">
+                        <div className="flex items-baseline gap-1">
+                          <span className={`font-heading text-2xl font-black ${colorClass}`}>
+                            {used}
+                          </span>
+                          <span className="text-xs font-mono text-[#8c93a0]">
+                            / {max.toLocaleString('id-ID')} Traffic
+                          </span>
+                        </div>
+                        <span className={`text-[11px] font-mono font-bold border px-1.5 py-0.5 rounded ${badgeBg}`}>
+                          {percent}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-[#f1f3f7] h-1.5 rounded-full overflow-hidden mt-3">
+                        <div
+                          className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {/* Middle Section: Chart (Left) + Recent Activity (Right) */}
+              {/* Middle Section: Total Traffic Website Publikasi (Left: 8 cols) + Notifikasi Pembayaran Masuk (Right: 4 cols) */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left (7 cols): Registration Performance Chart */}
+                {/* 1. Total Traffic Website Publikasi */}
                 <div className="lg:col-span-8 p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col justify-between">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#e2e5ea]">
                     <div>
                       <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
-                        Performa Registrasi &amp; Kunjungan
+                        Total Traffic Website Publikasi
                       </h3>
                       <p className="text-xs text-[#585d6b] mt-0.5">
-                        Metrik gabungan seluruh website aktif 7 hari terakhir
+                        Akumulasi kunjungan &amp; tayangan halaman website aktif
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs font-mono">
-                      <span className="flex items-center gap-1.5 text-[#0b0c0e]">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#1f2de6]"></span>
-                        Registrasi
-                      </span>
-                      <span className="flex items-center gap-1.5 text-[#8c93a0]">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#cbd5e1]"></span>
-                        Kunjungan
-                      </span>
+                    <div className="flex items-center gap-2 text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>Realtime Traffic</span>
                     </div>
                   </div>
 
@@ -625,40 +1098,40 @@ export default function UserDashboard({
                   <div className="my-5 flex items-baseline justify-between">
                     <div>
                       <div className="flex items-baseline gap-2">
-                        <span className="font-heading text-3xl font-black text-[#0b0c0e]">1,842</span>
-                        <span className="text-xs font-mono text-emerald-700 font-bold">+18.4% minggu ini</span>
+                        <span className="font-heading text-3xl font-black text-[#0b0c0e]">24,850</span>
+                        <span className="text-xs font-mono text-emerald-700 font-bold">+28.4% minggu ini</span>
                       </div>
-                      <span className="text-xs font-mono text-[#8c93a0]">Total peserta terdaftar</span>
+                      <span className="text-xs font-mono text-[#8c93a0]">Total kunjungan unik</span>
                     </div>
                     <div className="text-right text-xs font-mono text-[#585d6b]">
-                      Peak: <strong className="text-[#0b0c0e]">Sabtu (380 registrasi)</strong>
+                      Puncak: <strong className="text-[#0b0c0e]">Sabtu (5,420 kunjungan)</strong>
                     </div>
                   </div>
 
                   {/* Interactive SVG Area Chart */}
                   <div className="w-full h-44 relative">
-                    <svg viewBox="0 0 600 160" className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                    <svg viewBox="0 0 700 150" className="w-full h-full overflow-visible" preserveAspectRatio="none">
                       <defs>
-                        <linearGradient id="blueArea" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1f2de6" stopOpacity="0.25" />
+                        <linearGradient id="trafficGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#1f2de6" stopOpacity="0.22" />
                           <stop offset="100%" stopColor="#1f2de6" stopOpacity="0.0" />
                         </linearGradient>
                       </defs>
 
                       {/* Grid Lines */}
-                      <line x1="0" y1="40" x2="600" y2="40" stroke="#f1f3f7" strokeWidth="1" />
-                      <line x1="0" y1="80" x2="600" y2="80" stroke="#f1f3f7" strokeWidth="1" />
-                      <line x1="0" y1="120" x2="600" y2="120" stroke="#f1f3f7" strokeWidth="1" />
+                      <line x1="0" y1="35" x2="700" y2="35" stroke="#f1f3f7" strokeWidth="1" />
+                      <line x1="0" y1="75" x2="700" y2="75" stroke="#f1f3f7" strokeWidth="1" />
+                      <line x1="0" y1="115" x2="700" y2="115" stroke="#f1f3f7" strokeWidth="1" />
 
                       {/* Area Fill */}
                       <path
-                        d="M 20,120 Q 110,110 200,95 T 380,70 T 500,30 T 580,45 L 580,150 L 20,150 Z"
-                        fill="url(#blueArea)"
+                        d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40 L 680,145 L 20,145 Z"
+                        fill="url(#trafficGradient)"
                       />
 
                       {/* Smooth Trend Line */}
                       <path
-                        d="M 20,120 Q 110,110 200,95 T 380,70 T 500,30 T 580,45"
+                        d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40"
                         fill="none"
                         stroke="#1f2de6"
                         strokeWidth="2.5"
@@ -666,15 +1139,15 @@ export default function UserDashboard({
                       />
 
                       {/* Key Data Points */}
-                      <circle cx="20" cy="120" r="3.5" fill="#1f2de6" />
-                      <circle cx="200" cy="95" r="3.5" fill="#1f2de6" />
-                      <circle cx="380" cy="70" r="3.5" fill="#1f2de6" />
-                      <circle cx="500" cy="30" r="4.5" fill="#ffffff" stroke="#1f2de6" strokeWidth="2.5" />
-                      <circle cx="580" cy="45" r="3.5" fill="#1f2de6" />
+                      <circle cx="20" cy="115" r="3.5" fill="#1f2de6" />
+                      <circle cx="240" cy="90" r="3.5" fill="#1f2de6" />
+                      <circle cx="460" cy="65" r="3.5" fill="#1f2de6" />
+                      <circle cx="590" cy="25" r="4.5" fill="#ffffff" stroke="#1f2de6" strokeWidth="2.5" />
+                      <circle cx="680" cy="40" r="3.5" fill="#1f2de6" />
                     </svg>
 
                     {/* Day Labels */}
-                    <div className="flex justify-between text-[11px] font-mono text-[#8c93a0] mt-2 px-2">
+                    <div className="flex justify-between text-[11px] font-mono text-[#8c93a0] mt-2 px-1">
                       <span>Sen</span>
                       <span>Sel</span>
                       <span>Rab</span>
@@ -686,260 +1159,138 @@ export default function UserDashboard({
                   </div>
                 </div>
 
-                {/* Right (4 cols): Recent Activity Feed */}
+                {/* 2. Notifikasi Pembayaran Masuk */}
                 <div className="lg:col-span-4 p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between pb-3 border-b border-[#e2e5ea]">
-                      <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
-                        Aktivitas Terkini
-                      </h3>
-                      <span className="material-symbols-outlined text-[18px] text-[#8c93a0]">schedule</span>
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px] text-[#1f2de6]">payments</span>
+                        <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
+                          Pembayaran Masuk
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
+                        Live
+                      </span>
                     </div>
 
-                    <div className="divide-y divide-[#f1f3f7] mt-3 space-y-3">
-                      <div className="pt-2 text-xs">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-2 h-2 rounded-full bg-[#1f2de6] mt-1 shrink-0"></span>
-                          <div>
-                            <p className="text-[#0b0c0e] font-semibold leading-snug">
-                              Form registrasi baru masuk pada <span className="text-[#1f2de6]">Hackathon Nusantara 2025</span>
-                            </p>
-                            <span className="text-[10px] font-mono text-[#8c93a0] block mt-0.5">
-                              Budi Prasetyo (Team Alpha) • 10 menit lalu
+                    <div className="divide-y divide-[#f1f3f7] mt-3">
+                      {INCOMING_PAYMENTS.map((payment) => (
+                        <div key={payment.id} className="py-2.5 flex items-center justify-between gap-3">
+                          <div className="space-y-0.5 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold text-[#0b0c0e] truncate">{payment.name}</p>
+                              <span className="text-[10px] font-mono text-[#8c93a0] shrink-0">• {payment.time}</span>
+                            </div>
+                            <p className="text-[11px] text-[#585d6b] truncate">{payment.event}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-mono font-extrabold text-[#0b0c0e] block">
+                              {payment.amount}
+                            </span>
+                            <span className="text-[9px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
+                              {payment.status}
                             </span>
                           </div>
                         </div>
-                      </div>
-
-                      <div className="pt-3 text-xs">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0"></span>
-                          <div>
-                            <p className="text-[#0b0c0e] leading-snug">
-                              Draft website <strong className="text-[#0b0c0e]">Webinar UI/UX Masterclass</strong> disimpan otomatis
-                            </p>
-                            <span className="text-[10px] font-mono text-[#8c93a0] block mt-0.5">
-                              1 jam yang lalu
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-3 text-xs">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0"></span>
-                          <div>
-                            <p className="text-[#0b0c0e] leading-snug">
-                              Iventra Expert Designer mengunggah pratinjau mockup v2 untuk <strong className="text-[#0b0c0e]">Tech Conference Asia</strong>
-                            </p>
-                            <span className="text-[10px] font-mono text-[#8c93a0] block mt-0.5">
-                              3 jam yang lalu
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-3 text-xs">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-2 h-2 rounded-full bg-[#585d6b] mt-1 shrink-0"></span>
-                          <div>
-                            <p className="text-[#0b0c0e] leading-snug">
-                              Sertifikat SSL otomatis aktif pada custom domain event
-                            </p>
-                            <span className="text-[10px] font-mono text-[#8c93a0] block mt-0.5">
-                              Kemarin, 21:14 WIB
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-[#f1f3f7] mt-3 flex items-center justify-between text-xs font-mono">
+                    <span className="text-[#8c93a0]">Total Hari Ini</span>
+                    <span className="font-bold text-[#0b0c0e]">Rp 1.100.000</span>
                   </div>
                 </div>
               </div>
 
-              {/* Bottom Section: Workspace Terbaru List (Left) + Template Spotlight (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left (8 cols): Workspace Terbaru */}
-                <div className="lg:col-span-8 p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                  <div className="flex items-center justify-between pb-4 border-b border-[#e2e5ea] mb-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
-                        Workspace Terbaru
-                      </h3>
-                      <span className="text-[11px] font-mono bg-[#f4f5f8] border border-[#e2e5ea] px-2 py-0.5 rounded text-[#585d6b]">
-                        {workspaces.length > 0 ? workspaces.length : 3} aktif
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setCurrentNav('workspaces')}
-                      className="text-xs font-mono font-bold text-[#1f2de6] hover:underline"
-                    >
-                      Lihat Semua →
-                    </button>
+              {/* Bottom Section: Workspace Terbaru (Minimalist Cards Grid) */}
+              <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
+                <div className="flex items-center justify-between pb-4 border-b border-[#e2e5ea] mb-5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-heading text-base font-extrabold text-[#0b0c0e]">
+                      Workspace Terbaru
+                    </h3>
+                    <span className="text-[11px] font-mono bg-[#f4f5f8] border border-[#e2e5ea] px-2 py-0.5 rounded text-[#585d6b]">
+                      {workspaces.length > 0 ? workspaces.length : 3} aktif
+                    </span>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Item 1 */}
-                    <div className="p-4 rounded-xl border border-[#e2e5ea] bg-[#f8f9fb] flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-lift">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-[#edf2ff] text-[#1f2de6] px-2 py-0.5 rounded">
-                            Spark Pro
-                          </span>
-                          <span className="text-[10px] font-mono font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
-                            ● Published
-                          </span>
-                        </div>
-                        <h4 className="font-heading text-base font-bold text-[#0b0c0e]">
-                          {workspaces[0]?.name || 'Hackathon Nusantara 2025'}
-                        </h4>
-                        <div className="text-xs font-mono text-[#585d6b]">
-                          hackathon-nusantara25.iventra.live • Diedit 2 jam lalu
-                        </div>
-                        <div className="flex items-center gap-4 text-xs font-mono pt-1 text-[#0b0c0e]">
-                          <span>Total: <strong>482 / 500 Kuota</strong></span>
-                          <span>•</span>
-                          <span>Conversion: <strong className="text-emerald-700">24.8%</strong></span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (workspaces[0]) onOpenBuilder(workspaces[0]);
-                          }}
-                          className="px-3.5 py-1.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
-                        >
-                          Edit Builder
-                        </button>
-                        {workspaces[0]?.slug && (
-                          <a
-                            href={`/#event/${workspaces[0].slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3.5 py-1.5 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors"
-                          >
-                            Lihat ↗
-                          </a>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Item 2: Tech Conference Asia (Iventra Expert) */}
-                    <div className="p-4 rounded-xl border border-[#e2e5ea] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-lift">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-[#f4f5f8] text-[#0b0c0e] border border-[#e2e5ea] px-2 py-0.5 rounded">
-                            Iventra Expert
-                          </span>
-                          <span className="text-[10px] font-mono font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded">
-                            In Progress by Iventra Dev Team
-                          </span>
-                        </div>
-                        <h4 className="font-heading text-base font-bold text-[#0b0c0e]">
-                          Tech Conference Asia 2026
-                        </h4>
-                        <div className="text-xs font-mono text-[#585d6b]">
-                          techasia-summit.com • Milestone 3: Dynamic Ticketing Flow
-                        </div>
-                        <div className="w-48 h-1.5 bg-[#e2e5ea] rounded-full overflow-hidden mt-2">
-                          <div className="h-full bg-[#1f2de6] rounded-full" style={{ width: '75%' }}></div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setCurrentNav('expert')}
-                          className="px-3.5 py-1.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
-                        >
-                          Hubungi Designer
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Item 3 */}
-                    <div className="p-4 rounded-xl border border-[#e2e5ea] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-lift">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-[#f4f5f8] text-[#585d6b] border border-[#e2e5ea] px-2 py-0.5 rounded">
-                            Spark Free
-                          </span>
-                          <span className="text-[10px] font-mono font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded">
-                            Draft
-                          </span>
-                        </div>
-                        <h4 className="font-heading text-base font-bold text-[#0b0c0e]">
-                          Webinar UI/UX Masterclass
-                        </h4>
-                        <p className="text-xs text-[#585d6b]">
-                          4 tahapan form dikonfigurasi • Terakhir disimpan 1 jam lalu
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (workspaces[1]) onOpenBuilder(workspaces[1]);
-                          else setIsTemplateModalOpen(true);
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer shrink-0"
-                      >
-                        Lanjutkan Desain
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentNav('workspaces')}
+                    className="text-xs font-mono font-bold text-[#1f2de6] hover:underline cursor-pointer"
+                  >
+                    Lihat Semua →
+                  </button>
                 </div>
 
-                {/* Right (4 cols): Template Spotlight & Help Prompt */}
-                <div className="lg:col-span-4 space-y-4">
-                  {/* Spotlight Card */}
-                  <div className="p-5 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1f2de6] block mb-2">
-                      Template Spotlight
-                    </span>
-                    <div className="h-28 rounded-lg bg-gradient-to-tr from-[#0b0c0e] via-[#1f2de6] to-[#3b47dc] p-3 text-white flex flex-col justify-between mb-3 relative overflow-hidden">
-                      <span className="text-[10px] font-mono font-bold uppercase bg-white/20 backdrop-blur-xs px-2 py-0.5 rounded w-max">
-                        AI &amp; Tech
-                      </span>
-                      <h4 className="font-heading text-lg font-bold text-white">
-                        AI Summit 2026
-                      </h4>
-                    </div>
-                    <p className="text-xs text-[#585d6b] leading-relaxed mb-3">
-                      Dirancang khusus untuk konferensi teknologi mutakhir dengan fitur call-for-papers dan dynamic stage agenda.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsTemplateModalOpen(true)}
-                      className="w-full py-2 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
+                {/* Horizontal Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(workspaces.length > 0
+                    ? workspaces
+                    : [
+                        {
+                          id: 'demo-1',
+                          owner_id: user.id,
+                          name: 'National Tech Innovation Summit 2026',
+                          service_type: 'spark',
+                          status: 'published',
+                          slug: 'tech-summit-2026',
+                          description: null,
+                          created_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString(),
+                        },
+                        {
+                          id: 'demo-2',
+                          owner_id: user.id,
+                          name: 'Untitled Event',
+                          service_type: 'spark',
+                          status: 'draft',
+                          slug: 'untitled-event',
+                          description: null,
+                          created_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString(),
+                        },
+                      ]
+                  ).map((ws, idx) => (
+                    <div
+                      key={ws.id}
+                      onClick={() => onOpenBuilder(ws)}
+                      className="group rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs hover:shadow-md hover:border-[#1f2de6]/40 transition-all cursor-pointer flex flex-row items-stretch h-36"
                     >
-                      Gunakan Template →
-                    </button>
-                  </div>
+                      {/* 1. Gambar Website Aslinya Realtime (ala Google Docs) */}
+                      <div className="w-48 sm:w-56 h-full shrink-0 border-r border-[#e2e5ea] bg-slate-950 overflow-hidden relative">
+                        <RealtimeWebsiteThumbnail ws={ws} />
+                        <span className="absolute bottom-2 left-2 text-[9px] font-mono font-bold uppercase bg-black/70 backdrop-blur-xs text-white px-1.5 py-0.5 rounded z-20">
+                          {ws.service_type === 'expert' ? 'Expert' : 'Spark Pro'}
+                        </span>
+                      </div>
 
-                  {/* Consultation Prompt */}
-                  <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-8 h-8 rounded-lg bg-white border border-[#e2e5ea] flex items-center justify-center text-[#1f2de6] font-mono text-xs font-bold shrink-0">
-                        ?
-                      </span>
-                      <div>
-                        <h5 className="font-heading text-xs font-bold text-[#0b0c0e]">Butuh bantuan custom layout?</h5>
-                        <p className="text-[10px] font-mono text-[#585d6b]">Konsultasi 1-on-1 dengan engineer.</p>
+                      {/* 2. Judul Workspace & 3. Total Pengunjung */}
+                      <div className="p-4 flex flex-col justify-between flex-1 min-w-0">
+                        <div className="space-y-1">
+                          <h4 className="font-heading font-bold text-sm sm:text-base text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors line-clamp-2 tracking-tight">
+                            {ws.name}
+                          </h4>
+                          <span className="text-[10px] font-mono text-[#8c93a0] block truncate">
+                            {ws.slug ? `${ws.slug}.iventra.live` : 'Draft Workspace'}
+                          </span>
+                        </div>
+
+                        <div className="pt-2 border-t border-[#f1f3f7] flex items-center justify-between text-xs font-mono text-[#585d6b]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">visibility</span>
+                            <strong className="text-[#0b0c0e] font-bold">{getWorkspaceVisitorCount(ws, idx)}</strong>
+                            <span className="hidden sm:inline">Pengunjung</span>
+                          </span>
+                          <span className="text-[#1f2de6] font-bold group-hover:translate-x-1 transition-transform">
+                            →
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentNav('expert')}
-                      className="px-3 py-1.5 rounded-lg border border-[#e2e5ea] bg-white hover:border-[#0b0c0e] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer shrink-0"
-                    >
-                      Chat
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1277,248 +1628,1136 @@ export default function UserDashboard({
           {/* VIEW 3: TEMPLATES SHOWCASE */}
           {currentNav === 'templates' && (
             <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
-                  Koleksi Desain Terstandarisasi
-                </span>
-                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                  Template Event Siap Pakai
-                </h1>
-                <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                  Pilih struktur layout yang dirancang khusus untuk berbagai format kegiatan kampus dan komunitas.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {SPARK_TEMPLATES.map((tmpl) => (
-                  <div
-                    key={tmpl.id}
-                    className="rounded-xl border border-[#e2e5ea] bg-white overflow-hidden shadow-2xs flex flex-col justify-between card-lift"
-                  >
-                    <div>
-                      <div className={`h-36 bg-gradient-to-tr ${tmpl.previewGradient} p-4 text-white flex flex-col justify-between`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-black/40 px-2 py-0.5 rounded text-white">
-                            {tmpl.category}
-                          </span>
-                          <span className="text-[10px] font-mono font-bold uppercase bg-white text-[#0b0c0e] px-2 py-0.5 rounded">
-                            {tmpl.badge}
-                          </span>
-                        </div>
-                        <h3 className="font-heading text-lg font-bold text-white">
-                          {tmpl.name}
-                        </h3>
-                      </div>
-
-                      <div className="p-5 space-y-2.5">
-                        <p className="text-xs text-[#585d6b] leading-relaxed">
-                          {tmpl.description}
-                        </p>
-                        <div className="pt-2 border-t border-[#f1f3f7]">
-                          <span className="text-[10px] font-mono uppercase text-[#8c93a0] block">Rekomendasi Format:</span>
-                          <span className="text-xs font-semibold text-[#0b0c0e]">{tmpl.recommendedFor}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-[#f8f9fb] border-t border-[#e2e5ea]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsTemplateModalOpen(true);
-                        }}
-                        className="w-full py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
-                      >
-                        Gunakan Template Ini →
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="p-6 rounded-2xl bg-white border border-[#e2e5ea] shadow-2xs">
+                <GalleryHoverCarousel
+                  heading="Template Event Siap Pakai"
+                  subheading="Pilih arsitektur desain yang dirancang khusus untuk konferensi, kompetisi nasional, maupun festival kampus."
+                  onSelectItem={() => {
+                    setIsTemplateModalOpen(true);
+                  }}
+                  className="py-0"
+                />
               </div>
             </div>
           )}
 
-          {/* VIEW 4: EXPERT SERVICES */}
-          {currentNav === 'expert' && (
-            <div className="space-y-6 max-w-5xl mx-auto animate-fadeIn">
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
-                  Bespoke Engineering
-                </span>
-                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                  Iventra Expert Services
-                </h1>
-                <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                  Layanan pengembangan sistem khusus kepanitiaan: kompetisi bertingkat, dewan juri independen, payment gateway resmi, dan WhatsApp blast automation.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#edf2ff] text-[#1f2de6] flex items-center justify-center font-mono font-bold text-sm">
-                    01
-                  </div>
-                  <h3 className="font-heading text-lg font-bold text-[#0b0c0e]">
-                    Iventra Flow (Lomba &amp; Penjurian Bertingkat)
-                  </h3>
-                  <p className="text-xs text-[#585d6b] leading-relaxed">
-                    Arsitektur khusus pendaftaran tim, submisi proposal PDF terenkripsi, portal dewan juri dengan form rubrik nilai rahasia, serta pengumuman finalis otomatis.
-                  </p>
-                  <ul className="text-xs font-mono space-y-2 text-[#0b0c0e]">
-                    <li>✓ Portal Juri dengan akses terenkripsi</li>
-                    <li>✓ Dashboard rekap ranking otomatis</li>
-                    <li>✓ Upload berkas karya tim hingga 50MB</li>
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={() => setIsSubscriptionModalOpen(true)}
-                    className="w-full py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
-                  >
-                    Konsultasikan Alur Lomba →
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-mono font-bold text-sm">
-                    02
-                  </div>
-                  <h3 className="font-heading text-lg font-bold text-[#0b0c0e]">
-                    WhatsApp Gateway &amp; QR Attendance Gate
-                  </h3>
-                  <p className="text-xs text-[#585d6b] leading-relaxed">
-                    Pengiriman blast e-tiket QR terenkripsi via nomor WhatsApp resmi, auto-reminder H-3 dan H-1, serta scanner presensi pintu masuk dengan latensi &lt;0.5 detik.
-                  </p>
-                  <ul className="text-xs font-mono space-y-2 text-[#0b0c0e]">
-                    <li>✓ Tiket QR unik anti-duplikasi</li>
-                    <li>✓ Scanner kamera tanpa instalasi aplikasi</li>
-                    <li>✓ Export log kehadiran realtime siap LPJ</li>
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={() => setIsSubscriptionModalOpen(true)}
-                    className="w-full py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
-                  >
-                    Aktivasi WhatsApp Bot →
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* VIEW 4: EXPERT SERVICES (COMPETITION WORKFLOW CONSULTATION CHATBOT) */}
+          {currentNav === 'expert' && <CompetitionConsultationChat />}
 
           {/* VIEW 5: SUBSCRIPTION */}
-          {currentNav === 'subscription' && (
-            <div className="space-y-6 max-w-4xl mx-auto animate-fadeIn">
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
-                  Billing &amp; Kuota
-                </span>
-                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                  Status Berlangganan &amp; Kuota Event
-                </h1>
-                <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                  Kelola paket Spark Pro dan kuota penerbitan website acara Anda.
-                </p>
+          {currentNav === 'subscription' && (() => {
+            const metrics = getSubscriptionMetrics(subscription);
+            return (
+              <div className="space-y-6 max-w-4xl mx-auto animate-fadeIn pb-12">
+                <div>
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
+                    Billing &amp; Kuota Token
+                  </span>
+                  <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                    Status Berlangganan &amp; Kuota Event
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
+                    Kelola masa aktif lisensi Spark Pro, tanggal jatuh tempo perpanjangan, dan sisa token website acara Anda.
+                  </p>
+                </div>
+
+                {/* Main Subscription Card */}
+                <div className="p-6 sm:p-7 rounded-2xl bg-white border border-[#e2e5ea] shadow-2xs space-y-6">
+                  {/* Top Header */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-[#e2e5ea]">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${metrics.badgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${metrics.pulseDot} animate-pulse`}></span>
+                          {metrics.statusText}
+                        </span>
+                        <span className="text-xs font-mono text-[#8c93a0]">
+                          Siklus {subscription.billingCycle}
+                        </span>
+                      </div>
+                      <h2 className="font-heading text-xl sm:text-2xl font-black text-[#0b0c0e] tracking-tight">
+                        {subscription.planName}
+                      </h2>
+                    </div>
+
+                    <div className="text-left sm:text-right">
+                      <span className="font-heading text-xl sm:text-2xl font-black text-[#1f2de6] block">
+                        {subscription.priceFormatted}
+                      </span>
+                      <span className="text-[11px] font-mono text-[#8c93a0] block">
+                        Metode: {subscription.paymentMethod}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 4 Essential Metric Cards (Including Purchase Date & Expiration Date!) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs">
+                    {/* 1. Tanggal Beli */}
+                    <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-1.5">
+                      <div className="flex items-center gap-2 text-[#8c93a0]">
+                        <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">
+                          event
+                        </span>
+                        <span className="font-mono text-[11px] uppercase tracking-wide">Tanggal Pembelian</span>
+                      </div>
+                      <strong className="text-sm font-heading font-bold text-[#0b0c0e] block">
+                        {formatIndonesianDate(subscription.purchasedAt)}
+                      </strong>
+                      <span className="text-[10px] font-mono text-[#585d6b] block">
+                        Aktivasi Terkonfirmasi
+                      </span>
+                    </div>
+
+                    {/* 2. Habis Masa Aktif / Expired */}
+                    <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-1.5">
+                      <div className="flex items-center gap-2 text-[#8c93a0]">
+                        <span className="material-symbols-outlined text-[16px] text-amber-600">
+                          event_busy
+                        </span>
+                        <span className="font-mono text-[11px] uppercase tracking-wide">Habis Masa Berlaku</span>
+                      </div>
+                      <strong className="text-sm font-heading font-bold text-[#0b0c0e] block">
+                        {formatIndonesianDate(subscription.expiresAt)}
+                      </strong>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        {metrics.remainingDays > 0 ? `${metrics.remainingDays} Hari Tersisa` : 'Masa Aktif Habis'}
+                      </span>
+                    </div>
+
+                    {/* 3. Kuota Token Website */}
+                    <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-1.5">
+                      <div className="flex items-center gap-2 text-[#8c93a0]">
+                        <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">
+                          token
+                        </span>
+                        <span className="font-mono text-[11px] uppercase tracking-wide">Token Website Event</span>
+                      </div>
+                      <strong className="text-sm font-heading font-bold text-[#0b0c0e] block">
+                        {subscription.usedTokens} / {subscription.totalTokens} Digunakan
+                      </strong>
+                      <span className="text-[10px] font-mono text-[#585d6b] block">
+                        {Math.max(0, subscription.totalTokens - subscription.usedTokens)} Token Slot Tersedia
+                      </span>
+                    </div>
+
+                    {/* 4. Kapasitas Peserta */}
+                    <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-1.5">
+                      <div className="flex items-center gap-2 text-[#8c93a0]">
+                        <span className="material-symbols-outlined text-[16px] text-[#0b0c0e]">
+                          group
+                        </span>
+                        <span className="font-mono text-[11px] uppercase tracking-wide">Batas Peserta</span>
+                      </div>
+                      <strong className="text-sm font-heading font-bold text-[#0b0c0e] block">
+                        5.000 / Event
+                      </strong>
+                      <span className="text-[10px] font-mono text-emerald-700 block font-semibold">
+                        SSL &amp; QR Presensi Aktif
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Timeline Masa Aktif */}
+                  <div className="p-4 rounded-xl bg-[#f8f9fb] border border-[#e2e5ea] space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-[#0b0c0e] font-heading">
+                        Masa Berlangganan Berjalan
+                      </span>
+                      <span className="font-mono text-[11px] text-[#1f2de6] font-bold">
+                        {metrics.remainingDays > 0 ? `${metrics.remainingDays} hari menuju perpanjangan` : 'Perlu diperpanjang'}
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-[#e2e5ea] overflow-hidden">
+                      <div
+                        className="h-full bg-[#1f2de6] rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(5, metrics.progressPercent))}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono text-[#8c93a0]">
+                      <span>Mulai: {formatIndonesianDate(subscription.purchasedAt)}</span>
+                      <span>Selesai: {formatIndonesianDate(subscription.expiresAt)}</span>
+                    </div>
+                  </div>
+
+                  {/* Bottom Actions */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsSubscriptionModalOpen(true)}
+                        className="px-5 py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">add_card</span>
+                        <span>Perpanjang / Tambah Kuota Token</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleToggleAutoRenew}
+                        className="px-4 py-2.5 rounded-lg border border-[#e2e5ea] hover:bg-[#f8f9fb] text-xs font-semibold text-[#0b0c0e] transition-colors cursor-pointer"
+                      >
+                        Auto-Renew: {subscription.autoRenew ? 'Aktif (Nonaktifkan)' : 'Mati (Aktifkan)'}
+                      </button>
+                    </div>
+
+                    <span className="text-xs font-mono text-[#8c93a0] text-center sm:text-right">
+                      Invoice resmi diterbitkan otomatis
+                    </span>
+                  </div>
+                </div>
+
+                {/* Billing History / Invoices Table */}
+                <div className="p-6 rounded-2xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-2">
+                    <div>
+                      <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                        Riwayat Transaksi &amp; Invoice
+                      </h2>
+                      <p className="text-xs text-[#585d6b] mt-0.5">
+                        Daftar bukti pembayaran resmi aktivasi paket Spark Pro Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border border-[#e2e5ea] rounded-xl overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#f8f9fb] border-b border-[#e2e5ea] text-[#585d6b] font-mono text-[11px] uppercase">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">No. Invoice</th>
+                          <th className="px-4 py-3 font-semibold">Tanggal Beli</th>
+                          <th className="px-4 py-3 font-semibold">Rincian Paket</th>
+                          <th className="px-4 py-3 font-semibold">Total</th>
+                          <th className="px-4 py-3 font-semibold">Status</th>
+                          <th className="px-4 py-3 font-semibold text-right">Struk</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#f0f2f5]">
+                        {subscription.invoices.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-[#fafbfc] transition-colors">
+                            <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
+                              {inv.id}
+                            </td>
+                            <td className="px-4 py-3 text-[#585d6b] font-mono">
+                              {formatIndonesianDate(inv.date)}
+                            </td>
+                            <td className="px-4 py-3 text-[#0b0c0e] font-medium">
+                              {inv.planName}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
+                              {inv.amount}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                {inv.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => showToast(`Mengunduh invoice ${inv.id}...`)}
+                                className="px-2.5 py-1 rounded border border-[#e2e5ea] hover:bg-white text-[11px] font-mono text-[#0b0c0e] transition-colors cursor-pointer"
+                              >
+                                Unduh PDF
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* VIEW: NOTIFICATIONS (Dedicated Notification Center) */}
+          {currentNav === 'notifications' && (
+            <div className="space-y-6 max-w-4xl mx-auto animate-fadeIn pb-12">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
+                    Pusat Pemberitahuan
+                  </span>
+                  <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                    Notifikasi Event
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
+                    Pantau pendaftaran peserta, konfirmasi transaksi tiket, dan aktivitas sistem event secara real-time.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {unreadNotifsCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllAsRead}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#e2e5ea] hover:bg-[#f8f9fb] text-[#0b0c0e] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-emerald-600">done_all</span>
+                      <span>Tandai Semua Dibaca</span>
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllNotifications}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#e2e5ea] hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-[#585d6b] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
+                      <span>Bersihkan</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-5">
-                <div className="flex items-center justify-between pb-4 border-b border-[#e2e5ea]">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold uppercase bg-[#edf2ff] text-[#1f2de6] px-2 py-0.5 rounded">
-                      Paket Aktif
-                    </span>
-                    <h3 className="font-heading text-xl font-bold text-[#0b0c0e] mt-1">Spark Pro Workspace</h3>
-                  </div>
-                  <span className="font-heading text-lg font-black text-[#1f2de6]">Rp 150.000 / event</span>
-                </div>
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {[
+                  { id: 'all', label: 'Semua', count: notifications.length },
+                  { id: 'unread', label: 'Belum Dibaca', count: unreadNotifsCount },
+                  {
+                    id: 'registration',
+                    label: 'Pendaftaran & Lomba',
+                    count: notifications.filter((n) => n.category === 'registration' || n.category === 'submission').length
+                  },
+                  {
+                    id: 'payment',
+                    label: 'Tiket & Transaksi',
+                    count: notifications.filter((n) => n.category === 'payment' || n.category === 'quota').length
+                  },
+                  {
+                    id: 'system',
+                    label: 'Sistem & Gateway',
+                    count: notifications.filter((n) => n.category === 'broadcast' || n.category === 'system').length
+                  }
+                ].map((tab) => {
+                  const isActive = notifFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setNotifFilter(tab.id as any)}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                        isActive
+                          ? 'bg-[#0b0c0e] text-white shadow-2xs'
+                          : 'bg-white border border-[#e2e5ea] text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      {tab.count !== undefined && (
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-[#f0f2f5] text-[#585d6b]'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
-                  <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
-                    <span className="text-[#8c93a0] block">Kuota Website Live</span>
-                    <strong className="text-sm text-[#0b0c0e] mt-1 block">8 / 10 Website</strong>
+              {/* Notification Cards Feed */}
+              <div className="space-y-3">
+                {filteredNotifications.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-[#e2e5ea] p-12 text-center space-y-3 shadow-2xs">
+                    <div className="w-12 h-12 rounded-full bg-[#f8f9fb] border border-[#e2e5ea] flex items-center justify-center mx-auto text-[#8c93a0]">
+                      <span className="material-symbols-outlined text-2xl">notifications_off</span>
+                    </div>
+                    <h3 className="font-heading text-sm font-bold text-[#0b0c0e]">Tidak Ada Notifikasi</h3>
+                    <p className="text-xs text-[#585d6b] max-w-sm mx-auto">
+                      Semua aktivitas event telah ditinjau atau belum ada pemberitahuan baru dalam kategori ini.
+                    </p>
                   </div>
-                  <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
-                    <span className="text-[#8c93a0] block">Batas Kuota Peserta</span>
-                    <strong className="text-sm text-[#0b0c0e] mt-1 block">Hingga 5.000 / event</strong>
-                  </div>
-                  <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
-                    <span className="text-[#8c93a0] block">Status Domain</span>
-                    <strong className="text-sm text-emerald-700 mt-1 block">SSL Aktif</strong>
-                  </div>
-                </div>
+                ) : (
+                  filteredNotifications.map((notif) => {
+                    let badgeText = 'INFORMASI';
+                    let badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
+                    let iconBg = 'bg-slate-100 text-slate-700';
 
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsSubscriptionModalOpen(true)}
-                    className="px-5 py-2.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all cursor-pointer"
-                  >
-                    Tambah Kuota / Upgrade Paket
-                  </button>
-                </div>
+                    if (notif.category === 'registration') {
+                      badgeText = 'REGISTRASI';
+                      badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      iconBg = 'bg-emerald-50 text-emerald-600';
+                    } else if (notif.category === 'payment') {
+                      badgeText = 'TRANSAKSI';
+                      badgeBg = 'bg-blue-50 text-[#1f2de6] border-blue-200';
+                      iconBg = 'bg-[#edf2ff] text-[#1f2de6]';
+                    } else if (notif.category === 'quota') {
+                      badgeText = 'KUOTA EVENT';
+                      badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                      iconBg = 'bg-amber-50 text-amber-600';
+                    } else if (notif.category === 'submission') {
+                      badgeText = 'SUBMISI KARYA';
+                      badgeBg = 'bg-purple-50 text-purple-700 border-purple-200';
+                      iconBg = 'bg-purple-50 text-purple-600';
+                    } else if (notif.category === 'broadcast') {
+                      badgeText = 'WHATSAPP GATEWAY';
+                      badgeBg = 'bg-teal-50 text-teal-700 border-teal-200';
+                      iconBg = 'bg-teal-50 text-teal-600';
+                    } else if (notif.category === 'system') {
+                      badgeText = 'SISTEM IVENTRA';
+                      badgeBg = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                      iconBg = 'bg-indigo-50 text-indigo-600';
+                    }
+
+                    return (
+                      <div
+                        key={notif.id}
+                        className={`group bg-white rounded-xl border transition-all duration-200 p-4 sm:p-5 flex items-start gap-4 ${
+                          !notif.read
+                            ? 'border-[#1f2de6]/30 shadow-xs bg-gradient-to-r from-blue-50/25 via-white to-white'
+                            : 'border-[#e2e5ea] hover:border-[#ccd2db]'
+                        }`}
+                      >
+                        {/* Icon */}
+                        <div className="relative shrink-0 mt-0.5">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconBg}`}>
+                            <span className="material-symbols-outlined text-[20px]">{notif.icon}</span>
+                          </div>
+                          {!notif.read && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#1f2de6] ring-2 ring-white"></span>
+                          )}
+                        </div>
+
+                        {/* Middle Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider border ${badgeBg}`}>
+                              {badgeText}
+                            </span>
+                            <span className="text-[11px] font-mono text-[#8c93a0] flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[13px]">schedule</span>
+                              {notif.timestamp}
+                            </span>
+                          </div>
+
+                          <h4 className="font-heading text-sm font-bold text-[#0b0c0e]">
+                            {notif.title}
+                          </h4>
+                          <p className="text-xs text-[#585d6b] mt-1 leading-relaxed">
+                            {notif.message}
+                          </p>
+
+                          {/* Link Button */}
+                          {notif.linkNav && notif.linkLabel && (
+                            <div className="mt-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleToggleRead(notif.id, true);
+                                  setCurrentNav(notif.linkNav!);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f8f9fb] hover:bg-[#edf2ff] border border-[#e2e5ea] hover:border-[#1f2de6]/30 text-xs font-semibold text-[#0b0c0e] hover:text-[#1f2de6] transition-all cursor-pointer"
+                              >
+                                <span>{notif.linkLabel}</span>
+                                <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRead(notif.id)}
+                            className="w-8 h-8 rounded-lg hover:bg-[#f8f9fb] text-[#8c93a0] hover:text-[#0b0c0e] flex items-center justify-center transition-colors cursor-pointer"
+                            title={notif.read ? 'Tandai belum dibaca' : 'Tandai sudah dibaca'}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              {notif.read ? 'mark_chat_unread' : 'done'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNotification(notif.id)}
+                            className="w-8 h-8 rounded-lg hover:bg-red-50 text-[#8c93a0] hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer"
+                            title="Hapus notifikasi"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">close</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
 
           {/* VIEW 6: SETTINGS */}
           {currentNav === 'settings' && (
-            <div className="space-y-6 max-w-xl mx-auto animate-fadeIn">
+            <div className="space-y-6 max-w-4xl mx-auto animate-fadeIn pb-12">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold block mb-1">
                   Akun &amp; Keamanan
                 </span>
                 <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                  Pengaturan Profil Panitia
+                  Pengaturan Akun Panitia
                 </h1>
                 <p className="text-xs sm:text-sm text-[#585d6b] mt-1">
-                  Kelola nama identitas panitia dan preferensi akun Anda.
+                  Kelola identitas kepanitiaan, keamanan akun, dan preferensi operasional event Anda.
                 </p>
               </div>
 
-              <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
-                <form onSubmit={handleSaveProfile} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#0b0c0e] uppercase">
-                      Nama Lengkap Panitia
-                    </label>
-                    <input
-                      type="text"
-                      value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#0b0c0e] focus:outline-none"
-                      required
-                    />
+              {/* Sub-navigation Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-[#f0f2f5] rounded-xl border border-[#e2e5ea] overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('profile')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    settingsTab === 'profile'
+                      ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">person</span>
+                  <span>Profil Panitia</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('security')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    settingsTab === 'security'
+                      ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">shield</span>
+                  <span>Keamanan &amp; Sandi</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('notifications')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    settingsTab === 'notifications'
+                      ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">tune</span>
+                  <span>Preferensi Alert</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('account')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    settingsTab === 'account'
+                      ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
+                  <span>Sesi &amp; Keluar</span>
+                </button>
+              </div>
+
+              {/* TAB 1: PROFIL PANITIA */}
+              {settingsTab === 'profile' && (
+                <div className="space-y-6">
+                  {/* Identity Card */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-full bg-[#0b0c0e] text-white flex items-center justify-center font-heading font-black text-2xl shrink-0 shadow-xs border-2 border-white ring-2 ring-[#e2e5ea]">
+                        {displayedName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h2 className="font-heading text-lg font-bold text-[#0b0c0e]">
+                            {displayedName}
+                          </h2>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Terverifikasi
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#585d6b] flex items-center gap-1.5">
+                          <span>{organization}</span>
+                          <span>•</span>
+                          <span className="font-medium text-[#0b0c0e]">{committeeRole}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-mono">
+                      <span className="px-2.5 py-1 rounded-md bg-[#f8f9fb] border border-[#e2e5ea] text-[#585d6b]">
+                        ID: {user.id.slice(0, 8)}...
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#0b0c0e] uppercase">
-                      Email Akun
-                    </label>
-                    <input
-                      type="email"
-                      value={user.email}
-                      disabled
-                      className="w-full px-3.5 py-2 rounded-lg border border-[#e2e5ea] bg-[#f8f9fb] text-sm text-[#8c93a0] cursor-not-allowed font-mono"
-                    />
+                  {/* Profile Edit Form */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
+                    <form onSubmit={handleSaveProfile} className="space-y-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Nama Lengkap Panitia
+                          </label>
+                          <input
+                            type="text"
+                            value={profileName}
+                            onChange={(e) => setProfileName(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider flex items-center justify-between">
+                            <span>Email Akun</span>
+                            <span className="text-[10px] font-normal text-emerald-600 lowercase font-mono">Terkunci</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={user.email}
+                            disabled
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-[#f8f9fb] text-sm text-[#8c93a0] cursor-not-allowed font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Asal Instansi / Kampus / Komunitas
+                          </label>
+                          <input
+                            type="text"
+                            value={organization}
+                            onChange={(e) => setOrganization(e.target.value)}
+                            placeholder="Contoh: SMK Telkom Sidoarjo / BEM UI"
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Nomor WhatsApp Panitia
+                          </label>
+                          <input
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="+62 812-3456-7890"
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Peran dalam Kepanitiaan
+                          </label>
+                          <select
+                            value={committeeRole}
+                            onChange={(e) => setCommitteeRole(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                          >
+                            <option value="Ketua Panitia / Project Lead">Ketua Panitia / Project Lead</option>
+                            <option value="Koordinator Divisi Acara">Koordinator Divisi Acara</option>
+                            <option value="Divisi Registrasi &amp; Tiket">Divisi Registrasi &amp; Tiket</option>
+                            <option value="Divisi Publikasi &amp; Desain">Divisi Publikasi &amp; Desain</option>
+                            <option value="Divisi Sponsorship &amp; Dana">Divisi Sponsorship &amp; Dana</option>
+                            <option value="Bendahara Event">Bendahara Event</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Zona Waktu Event
+                          </label>
+                          <select
+                            value={eventTimezone}
+                            onChange={(e) => setEventTimezone(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all font-mono text-xs"
+                          >
+                            <option value="Asia/Jakarta">Asia/Jakarta (WIB - UTC+7)</option>
+                            <option value="Asia/Makassar">Asia/Makassar (WITA - UTC+8)</option>
+                            <option value="Asia/Jayapura">Asia/Jayapura (WIT - UTC+9)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                          Catatan Operasional Panitia
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          placeholder="Deskripsi singkat tanggung jawab kepanitiaan Anda..."
+                          className="w-full px-3.5 py-2 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all resize-none"
+                        />
+                      </div>
+
+                      {profileError && (
+                        <p className="text-xs font-mono text-red-600">{profileError}</p>
+                      )}
+                      {profileSuccess && (
+                        <p className="text-xs font-mono text-emerald-700">{profileSuccess}</p>
+                      )}
+
+                      <div className="pt-2 flex items-center justify-between border-t border-[#e2e5ea]">
+                        <span className="text-xs text-[#8c93a0]">
+                          Perubahan langsung terhubung ke sistem tiket &amp; email event.
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={isSavingProfile}
+                          className="px-5 py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-semibold tracking-tight transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
+                        >
+                          {isSavingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: KEAMANAN & SANDI */}
+              {settingsTab === 'security' && (
+                <div className="space-y-6">
+                  {/* Change Password Card */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                    <div>
+                      <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                        Perbarui Kata Sandi
+                      </h2>
+                      <p className="text-xs text-[#585d6b] mt-0.5">
+                        Gunakan kombinasi minimal 8 karakter dengan huruf, angka, dan simbol.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleSavePassword} className="space-y-4 max-w-lg">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                          Password Saat Ini
+                        </label>
+                        <input
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Password Baru
+                          </label>
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Minimal 8 karakter"
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#0b0c0e] uppercase tracking-wider">
+                            Konfirmasi Password Baru
+                          </label>
+                          <input
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Ulangi password baru"
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-[#e2e5ea] bg-white text-sm text-[#0b0c0e] focus:border-[#1f2de6] focus:outline-none transition-all"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {passwordError && (
+                        <p className="text-xs font-mono text-red-600">{passwordError}</p>
+                      )}
+                      {passwordSuccess && (
+                        <p className="text-xs font-mono text-emerald-700">{passwordSuccess}</p>
+                      )}
+
+                      <div className="pt-2">
+                        <button
+                          type="submit"
+                          disabled={isSavingPassword}
+                          className="px-5 py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-semibold tracking-tight transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
+                        >
+                          {isSavingPassword ? 'Menyimpan...' : 'Perbarui Password'}
+                        </button>
+                      </div>
+                    </form>
                   </div>
 
-                  {profileError && (
-                    <p className="text-xs font-mono text-red-600">{profileError}</p>
-                  )}
-                  {profileSuccess && (
-                    <p className="text-xs font-mono text-emerald-700">{profileSuccess}</p>
-                  )}
+                  {/* 2FA Card */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                          Autentikasi Dua Langkah (2FA)
+                        </h2>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${
+                          twoFactorEnabled
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-zinc-100 text-zinc-600 border border-zinc-200'
+                        }`}>
+                          {twoFactorEnabled ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#585d6b]">
+                        Wajibkan verifikasi OTP kode saat panitia login dari perangkat baru.
+                      </p>
+                    </div>
 
-                  <div className="pt-2">
                     <button
-                      type="submit"
-                      disabled={isSavingProfile}
-                      className="px-5 py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-semibold tracking-tight transition-colors cursor-pointer"
+                      type="button"
+                      role="switch"
+                      aria-checked={twoFactorEnabled}
+                      onClick={handleToggle2FA}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        twoFactorEnabled ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                      }`}
                     >
-                      {isSavingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          twoFactorEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
                     </button>
                   </div>
-                </form>
-              </div>
+
+                  {/* Active Sessions Card */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                          Sesi Login Aktif
+                        </h2>
+                        <p className="text-xs text-[#585d6b] mt-0.5">
+                          Perangkat yang saat ini sedang terhubung ke akun panitia ini.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => showToast('Semua sesi eksternal berhasil dihentikan.')}
+                        className="px-3 py-1.5 rounded-lg border border-[#e2e5ea] hover:bg-[#f8f9fb] text-xs font-semibold text-[#0b0c0e] transition-colors cursor-pointer"
+                      >
+                        Keluar Sesi Lain
+                      </button>
+                    </div>
+
+                    <div className="divide-y divide-[#f0f2f5] border border-[#e2e5ea] rounded-lg overflow-hidden text-xs">
+                      <div className="p-3.5 flex items-center justify-between bg-white">
+                        <div className="flex items-center gap-3">
+                          <span className="material-symbols-outlined text-[20px] text-[#585d6b]">
+                            laptop_mac
+                          </span>
+                          <div>
+                            <span className="font-semibold text-[#0b0c0e] block">
+                              Windows 11 • Google Chrome
+                            </span>
+                            <span className="text-[#8c93a0] text-[11px] font-mono">
+                              IP: 127.0.0.1 • Jakarta, Indonesia
+                            </span>
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Sesi Ini (Aktif)
+                        </span>
+                      </div>
+                      <div className="p-3.5 flex items-center justify-between bg-[#fafbfc]">
+                        <div className="flex items-center gap-3">
+                          <span className="material-symbols-outlined text-[20px] text-[#8c93a0]">
+                            smartphone
+                          </span>
+                          <div>
+                            <span className="font-medium text-[#585d6b] block">
+                              Android Mobile • Chrome Mobile
+                            </span>
+                            <span className="text-[#8c93a0] text-[11px] font-mono">
+                              Terakhir aktif 2 hari lalu
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[#8c93a0] text-[11px] font-mono">
+                          Offline
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: NOTIFIKASI EVENT */}
+              {settingsTab === 'notifications' && (
+                <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-6">
+                  <div>
+                    <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                      Preferensi Notifikasi &amp; Alert Event
+                    </h2>
+                    <p className="text-xs text-[#585d6b] mt-0.5">
+                      Tentukan notifikasi yang dikirimkan ke email akun dan nomor WhatsApp panitia.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSaveNotifications} className="space-y-4">
+                    <div className="divide-y divide-[#f0f2f5] border border-[#e2e5ea] rounded-xl overflow-hidden">
+                      {/* Item 1 */}
+                      <div className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-[#fafbfc] transition-colors">
+                        <div className="space-y-0.5">
+                          <h3 className="text-xs font-bold text-[#0b0c0e]">
+                            Pendaftaran Peserta Baru
+                          </h3>
+                          <p className="text-xs text-[#585d6b]">
+                            Pemberitahuan real-time setiap kali peserta selesai mengisi form pendaftaran lomba/event.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifNewRegistration}
+                          onClick={() => setNotifNewRegistration(!notifNewRegistration)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            notifNewRegistration ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              notifNewRegistration ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Item 2 */}
+                      <div className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-[#fafbfc] transition-colors">
+                        <div className="space-y-0.5">
+                          <h3 className="text-xs font-bold text-[#0b0c0e]">
+                            Peringatan Kuota Tiket Menipis
+                          </h3>
+                          <p className="text-xs text-[#585d6b]">
+                            Peringatkan panitia ketika sisa slot tiket seminar/lomba tersisa kurang dari 10%.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifTicketLow}
+                          onClick={() => setNotifTicketLow(!notifTicketLow)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            notifTicketLow ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              notifTicketLow ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Item 3 */}
+                      <div className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-[#fafbfc] transition-colors">
+                        <div className="space-y-0.5">
+                          <h3 className="text-xs font-bold text-[#0b0c0e]">
+                            WhatsApp Gateway Otomatis
+                          </h3>
+                          <p className="text-xs text-[#585d6b]">
+                            Kirim e-tiket dan kode QR verifikasi langsung ke nomor WhatsApp peserta yang lolos verifikasi.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifWaTickets}
+                          onClick={() => setNotifWaTickets(!notifWaTickets)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            notifWaTickets ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              notifWaTickets ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Item 4 */}
+                      <div className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-[#fafbfc] transition-colors">
+                        <div className="space-y-0.5">
+                          <h3 className="text-xs font-bold text-[#0b0c0e]">
+                            Rekapitulasi Harian Event
+                          </h3>
+                          <p className="text-xs text-[#585d6b]">
+                            Kirim ringkasan harian total pendaftar, nominal tiket masuk, dan performa website setiap pukul 21:00 WIB.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifDailyRecap}
+                          onClick={() => setNotifDailyRecap(!notifDailyRecap)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            notifDailyRecap ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              notifDailyRecap ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Item 5 */}
+                      <div className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-[#fafbfc] transition-colors">
+                        <div className="space-y-0.5">
+                          <h3 className="text-xs font-bold text-[#0b0c0e]">
+                            Pembaruan Sistem &amp; Template Baru
+                          </h3>
+                          <p className="text-xs text-[#585d6b]">
+                            Dapatkan info fitur baru Iventra Spark Builder dan template event kampus terkini.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifSystemBroadcast}
+                          onClick={() => setNotifSystemBroadcast(!notifSystemBroadcast)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            notifSystemBroadcast ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              notifSystemBroadcast ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {notifSuccess && (
+                      <p className="text-xs font-mono text-emerald-700">{notifSuccess}</p>
+                    )}
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-lg bg-[#0b0c0e] hover:bg-[#1f2de6] text-white text-xs font-semibold tracking-tight transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
+                      >
+                        Simpan Preferensi Notifikasi
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* TAB 4: SESI & KELUAR AKUN */}
+              {settingsTab === 'account' && (
+                <div className="space-y-6">
+                  {/* Workspace & Plan Info Card */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#e2e5ea]">
+                      <div>
+                        <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                          Paket &amp; Kapasitas Event
+                        </h2>
+                        <p className="text-xs text-[#585d6b] mt-0.5">
+                          Paket kepanitiaan yang sedang aktif untuk workspace ini.
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#edf2ff] text-[#1f2de6] border border-[#cbd5e1]">
+                        {subscription.planName}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+                      <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
+                        <span className="text-[#8c93a0] block">Kuota Event Live</span>
+                        <strong className="text-sm text-[#0b0c0e] mt-1 block">{subscription.usedTokens} dari {subscription.totalTokens} Live</strong>
+                      </div>
+                      <div className="p-3.5 rounded-lg bg-[#f8f9fb] border border-[#e2e5ea]">
+                        <span className="text-[#8c93a0] block">Kapasitas Pendaftar</span>
+                        <strong className="text-sm text-[#0b0c0e] mt-1 block">5.000 Peserta / Event</strong>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentNav('subscription')}
+                        className="px-4 py-2 rounded-lg border border-[#e2e5ea] hover:bg-[#f8f9fb] text-xs font-semibold text-[#0b0c0e] transition-colors cursor-pointer"
+                      >
+                        Kelola Kuota &amp; Upgrade Paket
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* LOGOUT / KELUAR AKUN CARD (Requested by user) */}
+                  <div className="p-6 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 border border-red-200 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[20px]">logout</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
+                          Keluar dari Akun Panitia
+                        </h2>
+                        <p className="text-xs text-[#585d6b] max-w-md">
+                          Akhiri sesi login di perangkat ini. Semua data website event, form pendaftaran, dan data peserta tetap tersimpan dengan aman di server Iventra.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={onLogout}
+                      className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold tracking-tight shadow-xs transition-all cursor-pointer flex items-center gap-2 shrink-0 active:scale-[0.98]"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">logout</span>
+                      <span>Keluar Akun</span>
+                    </button>
+                  </div>
+
+                  {/* Danger Zone */}
+                  <div className="p-6 rounded-xl bg-red-50/40 border border-red-200/80 shadow-2xs space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-red-600 text-[18px]">
+                        warning
+                      </span>
+                      <h2 className="font-heading text-sm font-bold text-red-900 uppercase tracking-wider">
+                        Zona Bahaya
+                      </h2>
+                    </div>
+                    <p className="text-xs text-red-700/90 leading-relaxed max-w-xl">
+                      Menghapus akun panitia akan membatalkan lisensi aktif dan mengarsipkan seluruh website pendaftaran yang sedang dipublikasikan. Tindakan ini tidak dapat dibatalkan.
+                    </p>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Apakah Anda yakin ingin menonaktifkan akun panitia ini? Hubungi tim support Iventra untuk pemulihan data.')) {
+                            showToast('Permintaan penonaktifan telah dicatat.');
+                          }
+                        }}
+                        className="px-4 py-2 rounded-lg border border-red-300 bg-white hover:bg-red-100/50 text-red-700 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Nonaktifkan Akun Panitia...
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>
@@ -1644,6 +2883,7 @@ export default function UserDashboard({
       <SparkSubscriptionModal
         isOpen={isSubscriptionModalOpen}
         onClose={() => setIsSubscriptionModalOpen(false)}
+        onRenewSuccess={handleRenewSubscription}
       />
     </div>
   );
