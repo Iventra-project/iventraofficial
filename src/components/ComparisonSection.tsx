@@ -1,4 +1,8 @@
+import { useLanguage } from '../context/LanguageContext.tsx';
+
 export default function ComparisonSection() {
+  const { t } = useLanguage();
+
   return (
     <section
       className="relative w-full overflow-hidden bg-white py-20 text-slate-900 md:py-28"
@@ -7,14 +11,11 @@ export default function ComparisonSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
         <div className="mb-16 max-w-2xl text-left">
-          <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-            <span>FITUR KHUSUS EVENT</span>
-          </div>
           <h2 className="mb-4 text-3xl font-display font-extrabold tracking-tight text-slate-900 sm:text-4xl md:text-5xl">
-            Dibangun Khusus untuk Alur Kerja Kepanitiaan Nyata
+            {t.comparison.title}
           </h2>
           <p className="text-base font-medium leading-relaxed text-slate-600">
-            Bukan web builder umum. Setiap modul dirancang khusus menjawab kebutuhan kepanitiaan event di Indonesia.
+            {t.comparison.description}
           </p>
         </div>
 
@@ -27,10 +28,10 @@ export default function ComparisonSection() {
                 <span className="material-symbols-outlined text-[24px]">schedule</span>
               </div>
               <h3 className="text-2xl font-display font-bold text-slate-900 mb-2">
-                Timeline-Driven Visibility
+                {t.comparison.card1Title}
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed max-w-lg mb-8">
-                Konten dan tombol registrasi otomatis berganti saat fase event berpindah. Tidak perlu begadang untuk tutup form manual saat midnight.
+                {t.comparison.card1Desc}
               </p>
             </div>
 
@@ -61,10 +62,10 @@ export default function ComparisonSection() {
                 <span className="material-symbols-outlined text-[24px]">assignment</span>
               </div>
               <h3 className="text-2xl font-display font-bold text-slate-900 mb-2">
-                Integrated Forms
+                {t.comparison.card2Title}
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed mb-6">
-                Formulir pendaftaran cerdas bawaan dengan validasi berkas, upload proposal, dan link drive otomatis tanpa perlu Google Forms terpisah.
+                {t.comparison.card2Desc}
               </p>
             </div>
 
@@ -77,27 +78,27 @@ export default function ComparisonSection() {
             </div>
           </div>
 
-          {/* Card 3: QR Ticket Ready (Col 5) */}
+          {/* Card 3: Insight Data Otomatis (Col 5) */}
           <div className="md:col-span-5 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-md">
             <div>
               <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-6 shadow-md shadow-blue-500/20">
-                <span className="material-symbols-outlined text-[24px]">qr_code_2</span>
+                <span className="material-symbols-outlined text-[24px]">insights</span>
               </div>
               <h3 className="text-2xl font-display font-bold text-slate-900 mb-2">
-                QR Ticket Ready
+                {t.comparison.card3Title}
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed mb-6">
-                Setiap pendaftar otomatis mendapatkan tiket unik dengan barcode QR yang siap di-scan saat registrasi ulang offline di gate masuk.
+                {t.comparison.card3Desc}
               </p>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-blue-600 text-[20px]">verified</span>
-                <span className="text-xs font-semibold text-slate-800">Presisi 0.5 Detik per Scan</span>
+                <span className="material-symbols-outlined text-blue-600 text-[20px]">auto_graph</span>
+                <span className="text-xs font-semibold text-slate-800">{t.comparison.card3Pill}</span>
               </div>
               <span className="text-[11px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                VALID
+                OTOMATIS
               </span>
             </div>
           </div>
@@ -110,10 +111,10 @@ export default function ComparisonSection() {
                   <span className="material-symbols-outlined text-[24px]">trending_up</span>
                 </div>
                 <h3 className="text-2xl font-display font-bold text-slate-900 mb-2">
-                  Real-time Visitor &amp; Conversion Analytics
+                  {t.comparison.card4Title}
                 </h3>
                 <p className="text-sm text-slate-600 leading-relaxed max-w-md">
-                  Pantau berapa pengunjung yang melihat poster, membuka web, dan mengisi form secara real-time tanpa setup Google Analytics yang rumit.
+                  {t.comparison.card4Desc}
                 </p>
               </div>
 
@@ -121,7 +122,7 @@ export default function ComparisonSection() {
                 <span className="text-3xl font-display font-extrabold text-blue-600 block">
                   84.2%
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">Rata-rata Konversi Form</span>
+                <span className="text-[10px] text-slate-500 font-medium">{t.comparison.card4Metric}</span>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import { Pricing, type PricingPlan } from './ui/pricing';
+import { useLanguage } from '../context/LanguageContext.tsx';
 
 export interface ServicesPrices {
   sparkPrice?: string;
@@ -15,14 +16,16 @@ interface ServicesSectionProps {
 }
 
 export default function ServicesSection({ onSelectPlan, prices }: ServicesSectionProps) {
+  const { t } = useLanguage();
+
   const plans: PricingPlan[] = [
     {
-      label: 'MANDIRI',
+      label: t.services.sparkLabel,
       name: 'Iventra Spark',
       price: 'Rp 0',
       period: '/ event',
       priceNote: 'Gratis selamanya untuk 1 event aktif',
-      description: 'Untuk panitia mandiri yang ingin meluncurkan website event cepat tanpa menunggu tim teknis.',
+      description: t.services.sparkDesc,
       features: [
         '100+ Template Event Siap Pakai',
         'Live Dynamic Timeline & Stages',
@@ -30,16 +33,16 @@ export default function ServicesSection({ onSelectPlan, prices }: ServicesSectio
         'Export Data Peserta ke Excel/CSV',
         'Subdomain iventra.site Resmi'
       ],
-      buttonText: 'Pakai Gratis Sekarang',
+      buttonText: t.services.sparkBtn,
       href: '#dashboard'
     },
     {
-      label: 'SPARK PRO',
+      label: t.services.proLabel,
       name: 'Iventra Spark Pro',
       price: prices?.sparkPrice || 'Rp 149.000',
       period: prices?.sparkPriceNote || '/ event',
       priceNote: 'Bayar sekali saat event dipublikasikan',
-      description: 'Solusi serba otomatis dengan fitur lanjutan untuk event komersial atau berskala nasional.',
+      description: t.services.proDesc,
       features: [
         'Semua fitur Spark Free',
         'Custom Domain (contoh: namaevent.com)',
@@ -49,16 +52,16 @@ export default function ServicesSection({ onSelectPlan, prices }: ServicesSectio
         'Priority Server & Fast CDN Global'
       ],
       isPopular: true,
-      buttonText: 'Pilih Spark Pro',
+      buttonText: t.services.proBtn,
       href: '#dashboard'
     },
     {
-      label: 'FULL SERVICE',
+      label: t.services.expertLabel,
       name: 'Iventra Expert',
       price: 'Konsultasi',
       period: '/ custom brief',
       priceNote: 'Proposal & SLA pengerjaan dalam 24 jam',
-      description: 'Percayakan seluruh website, integrasi pembayaran, hingga teknis live event pada tim engineer profesional.',
+      description: t.services.expertDesc,
       features: [
         'Desain Kustom Unik dari Tim Desainer UI/UX',
         'Integrasi Payment Gateway (QRIS, BCA, VA)',
@@ -66,7 +69,7 @@ export default function ServicesSection({ onSelectPlan, prices }: ServicesSectio
         'Custom Multi-tier Ticketing & Bundling',
         'Dedicated Project Manager & On-Site Support'
       ],
-      buttonText: 'Hubungi Tim Expert',
+      buttonText: t.services.expertBtn,
       onClick: () => onSelectPlan('flow')
     }
   ];
@@ -74,9 +77,8 @@ export default function ServicesSection({ onSelectPlan, prices }: ServicesSectio
   return (
     <Pricing
       plans={plans}
-      eyebrow="PILIH MODEL EVENT"
-      title="Pilih Cara Anda Menjalankan Event"
-      description="Bisa buat sendiri secara instan dengan builder mandiri, atau percayakan sepenuhnya kepada tim expert desainer & developer kami."
+      title={t.services.title}
+      description={t.services.description}
     />
   );
 }
