@@ -28,10 +28,23 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | null>(null);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     if (oauthError) setError(oauthError);
   }, [oauthError]);
+
+  useEffect(() => {
+    if (!verificationPending || resendCountdown <= 0) return;
+    const timer = window.setTimeout(() => {
+      setResendCountdown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [verificationPending, resendCountdown]);
 
   const switchMode = (newMode: AuthMode) => {
     setMode(newMode);
@@ -39,6 +52,9 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
     setNotice('');
     setPassword('');
     setConfirmPassword('');
+    setVerificationPending(false);
+    setVerificationCode('');
+    setResendCountdown(0);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -49,6 +65,43 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
     if (!email.trim()) return setError('Email wajib diisi.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return setError('Masukkan alamat email yang valid.');
+    }
+
+    if (mode === 'register' && verificationPending) {
+      if (!/^\d{6}$/.test(verificationCode)) {
+        return setError('Masukkan kode verifikasi 6 digit.');
+      }
+
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/auth/register/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: verificationEmail, code: verificationCode })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || 'Kode verifikasi gagal diproses.');
+          return;
+        }
+
+        setEmail(verificationEmail);
+        setName('');
+        setPassword('');
+        setConfirmPassword('');
+        setVerificationPending(false);
+        setVerificationEmail('');
+        setVerificationCode('');
+        setResendCountdown(0);
+        setMode('login');
+        setNotice(data.message || 'Verifikasi berhasil. Silakan login dengan email dan password Anda.');
+      } catch {
+        setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
     }
 
     if (mode === 'forgot') {
@@ -85,11 +138,50 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
         return;
       }
 
+      if (mode === 'register') {
+        setVerificationPending(true);
+        setVerificationEmail(data.email || email.trim());
+        setVerificationCode('');
+        setResendCountdown(data.resendAfterSeconds ?? 60);
+        setNotice(`Kode verifikasi sudah dikirim ke ${data.email || email.trim()}. Masukkan kode 6 digit untuk menyelesaikan pendaftaran.`);
+        return;
+      }
+
       onAuthSuccess(data.token, data.user);
     } catch {
       setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const resendVerificationCode = async () => {
+    if (resendCountdown > 0 || isResending) return;
+
+    setError('');
+    setNotice('');
+    setIsResending(true);
+    try {
+      const response = await fetch('/api/auth/register/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verificationEmail })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.retryAfterSeconds) setResendCountdown(data.retryAfterSeconds);
+        setError(data.error || 'Kode verifikasi gagal dikirim ulang.');
+        return;
+      }
+
+      setVerificationCode('');
+      setResendCountdown(data.resendAfterSeconds ?? 60);
+      setNotice(`Kode verifikasi baru sudah dikirim ke ${verificationEmail}.`);
+    } catch {
+      setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -116,6 +208,7 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
 
   const isRegister = mode === 'register';
   const isForgot = mode === 'forgot';
+  const isVerifyingRegistration = isRegister && verificationPending;
 
   return (
     <main className="auth-screen">
@@ -164,17 +257,27 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
           </div>
 
           <header className="auth-heading">
-            <h2>{isForgot ? 'Lupa kata sandi?' : isRegister ? 'Buat akun Iventra' : 'Selamat datang kembali'}</h2>
+            <h2>
+              {isForgot
+                ? 'Lupa kata sandi?'
+                : isVerifyingRegistration
+                  ? 'Verifikasi email'
+                  : isRegister
+                    ? 'Buat akun Iventra'
+                    : 'Selamat datang kembali'}
+            </h2>
             <p>
               {isForgot
                 ? 'Masukkan email akun Anda untuk memulai pemulihan.'
-                : isRegister
+                : isVerifyingRegistration
+                  ? 'Masukkan kode 6 digit yang kami kirim untuk menyelesaikan pendaftaran.'
+                  : isRegister
                   ? 'Daftar untuk mulai mengelola event Anda.'
                   : 'Masuk untuk melanjutkan ke dashboard Iventra.'}
             </p>
           </header>
 
-          {!isForgot && (
+          {!isForgot && !verificationPending && (
             <div className="auth-social-section">
               <div className="auth-social-buttons">
                 <button
@@ -201,7 +304,7 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
           )}
 
           <form onSubmit={handleSubmit} noValidate className="auth-form">
-            {isRegister && (
+            {isRegister && !verificationPending && (
               <div className="auth-field">
                 <label htmlFor="auth-name">Nama lengkap</label>
                 <input
@@ -217,22 +320,46 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
             )}
 
             <div className="auth-field">
-              <label htmlFor="auth-email">Alamat email</label>
+              <label htmlFor="auth-email">{verificationPending ? 'Kode dikirim ke alamat email' : 'Alamat email'}</label>
               <div className="auth-input-wrap">
                 <Mail className="auth-input-icon" size={18} aria-hidden="true" />
                 <input
                   id="auth-email"
                   type="email"
                   autoComplete="email"
-                  value={email}
+                  value={verificationPending ? verificationEmail : email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="nama@email.com"
+                  readOnly={verificationPending}
                   required
                 />
               </div>
             </div>
 
-            {!isForgot && (
+            {isVerifyingRegistration && (
+              <div className="auth-field">
+                <label htmlFor="auth-verification-code">Kode verifikasi</label>
+                <input
+                  id="auth-verification-code"
+                  type="text"
+                  className="auth-code-input"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Masukkan 6 digit kode"
+                  aria-describedby="auth-verification-help"
+                  required
+                />
+                <span id="auth-verification-help" className="auth-field-help">
+                  Periksa kotak masuk atau folder spam. Kode berlaku selama 10 menit.
+                </span>
+              </div>
+            )}
+
+            {!isForgot && !verificationPending && (
               <div className="auth-field">
                 <div className="auth-label-row">
                   <label htmlFor="auth-password">Password</label>
@@ -265,7 +392,7 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
               </div>
             )}
 
-            {isRegister && (
+            {isRegister && !verificationPending && (
               <div className="auth-field">
                 <label htmlFor="auth-confirm">Konfirmasi password</label>
                 <div className="auth-input-wrap">
@@ -287,9 +414,35 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
             {notice && <p className="auth-message auth-message-notice" role="status">{notice}</p>}
 
             <button type="submit" className="auth-submit" disabled={isLoading}>
-              {isLoading ? 'Memproses...' : isForgot ? 'Kirim instruksi pemulihan' : isRegister ? 'Buat akun' : 'Masuk ke dashboard'}
+              {isLoading
+                ? 'Memproses...'
+                : isVerifyingRegistration
+                  ? 'Verifikasi email'
+                  : isForgot
+                    ? 'Kirim instruksi pemulihan'
+                    : isRegister
+                      ? 'Kirim kode verifikasi'
+                      : 'Masuk ke dashboard'}
               {!isLoading && <ArrowRight size={18} aria-hidden="true" />}
             </button>
+
+            {isVerifyingRegistration && (
+              <div className="auth-verification-actions">
+                <span>Belum menerima kode?</span>
+                <button
+                  type="button"
+                  className="auth-text-button"
+                  onClick={resendVerificationCode}
+                  disabled={isResending || resendCountdown > 0}
+                >
+                  {isResending
+                    ? 'Mengirim ulang...'
+                    : resendCountdown > 0
+                      ? `Kirim ulang dalam ${resendCountdown} detik`
+                      : 'Kirim ulang kode'}
+                </button>
+              </div>
+            )}
           </form>
 
           <p className="auth-switch">
@@ -297,6 +450,21 @@ export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: Au
               <>
                 Ingat password Anda?{' '}
                 <button type="button" onClick={() => switchMode('login')}>Kembali masuk</button>
+              </>
+            ) : isVerifyingRegistration ? (
+              <>
+                Salah email atau ingin mengubah data?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerificationPending(false);
+                    setVerificationCode('');
+                    setError('');
+                    setNotice('');
+                  }}
+                >
+                  Kembali ke pendaftaran
+                </button>
               </>
             ) : isRegister ? (
               <>
