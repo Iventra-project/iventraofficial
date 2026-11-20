@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -72,6 +72,19 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS pending_email_verifications (
+      email TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      sends_in_window INTEGER NOT NULL DEFAULT 1,
+      window_started_at INTEGER NOT NULL,
+      resend_after INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL,
@@ -102,6 +115,7 @@ export function initDb() {
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_submissions_ws ON workspace_submissions(workspace_id);'); } catch {}
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pending_email_verifications_window ON pending_email_verifications(window_started_at);');
 
   // Migrate workspaces table if columns do not exist
   try { db.exec('ALTER TABLE workspaces ADD COLUMN template_id TEXT DEFAULT "tech-summit";'); } catch {}
@@ -530,6 +544,117 @@ export function createUser(user: { id: string; email: string; password_hash: str
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), plan, role, now, now);
   return getUserById(user.id)!;
+}
+
+export interface PendingEmailVerification {
+  email: string;
+  name: string;
+  password_hash: string;
+  code_hash: string;
+  expires_at: number;
+  attempts: number;
+  sends_in_window: number;
+  window_started_at: number;
+  resend_after: number;
+  created_at: string;
+}
+
+export function getPendingEmailVerification(email: string): PendingEmailVerification | null {
+  return db.prepare(
+    'SELECT * FROM pending_email_verifications WHERE email = ?'
+  ).get(email.toLowerCase().trim()) as PendingEmailVerification | null;
+}
+
+export function savePendingEmailVerification(
+  verification: Omit<PendingEmailVerification, 'created_at'> & { created_at?: string }
+): void {
+  db.prepare(`
+    INSERT INTO pending_email_verifications (
+      email, name, password_hash, code_hash, expires_at, attempts,
+      sends_in_window, window_started_at, resend_after, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      name = excluded.name,
+      password_hash = excluded.password_hash,
+      code_hash = excluded.code_hash,
+      expires_at = excluded.expires_at,
+      attempts = excluded.attempts,
+      sends_in_window = excluded.sends_in_window,
+      window_started_at = excluded.window_started_at,
+      resend_after = excluded.resend_after,
+      created_at = excluded.created_at
+  `).run(
+    verification.email.toLowerCase().trim(),
+    verification.name.trim(),
+    verification.password_hash,
+    verification.code_hash,
+    verification.expires_at,
+    verification.attempts,
+    verification.sends_in_window,
+    verification.window_started_at,
+    verification.resend_after,
+    verification.created_at ?? new Date().toISOString()
+  );
+}
+
+export function deletePendingEmailVerification(email: string): void {
+  db.prepare('DELETE FROM pending_email_verifications WHERE email = ?')
+    .run(email.toLowerCase().trim());
+}
+
+export function cleanupExpiredEmailVerificationWindows(now: number): void {
+  db.prepare(
+    'DELETE FROM pending_email_verifications WHERE window_started_at <= ?'
+  ).run(now - 3600000);
+}
+
+export function verifyPendingEmailAndCreateUser(
+  email: string,
+  submittedCodeHash: string,
+  now: number,
+  maxAttempts: number
+): { status: 'verified'; user: UserRow } | { status: 'invalid' | 'locked' | 'expired' | 'missing' | 'already_registered' } {
+  const verify = db.transaction(() => {
+    const normalizedEmail = email.toLowerCase().trim();
+    const pending = getPendingEmailVerification(normalizedEmail);
+    if (!pending) return { status: 'missing' as const };
+
+    if (pending.expires_at <= now) {
+      return { status: 'expired' as const };
+    }
+
+    if (pending.attempts >= maxAttempts) {
+      return { status: 'locked' as const };
+    }
+
+    const expectedHash = Buffer.from(pending.code_hash, 'hex');
+    const providedHash = Buffer.from(submittedCodeHash, 'hex');
+    const isValid = expectedHash.length === providedHash.length &&
+      timingSafeEqual(expectedHash, providedHash);
+
+    if (!isValid) {
+      const attempts = pending.attempts + 1;
+      db.prepare('UPDATE pending_email_verifications SET attempts = ? WHERE email = ?')
+        .run(attempts, normalizedEmail);
+      return { status: attempts >= maxAttempts ? 'locked' as const : 'invalid' as const };
+    }
+
+    if (getUserByEmail(normalizedEmail)) {
+      deletePendingEmailVerification(normalizedEmail);
+      return { status: 'already_registered' as const };
+    }
+
+    const user = createUser({
+      id: randomUUID(),
+      email: normalizedEmail,
+      password_hash: pending.password_hash,
+      name: pending.name
+    });
+    deletePendingEmailVerification(normalizedEmail);
+    return { status: 'verified' as const, user };
+  });
+
+  return verify();
 }
 
 export type OAuthProvider = 'google' | 'facebook';

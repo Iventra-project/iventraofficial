@@ -475,6 +475,24 @@ button:active:not(:disabled), a[role="button"]:active {
   font-weight: 650;
 }
 
+.auth-field-help {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-field input:read-only {
+  color: #475467;
+  background: #f8fafc;
+}
+
+.auth-code-input {
+  text-align: center;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.35em;
+}
+
 .auth-label-row {
   display: flex;
   align-items: center;
@@ -562,6 +580,12 @@ button:active:not(:disabled), a[role="button"]:active {
   text-underline-offset: 3px;
 }
 
+.auth-text-button:disabled {
+  color: #98a2b3;
+  cursor: wait;
+  text-decoration: none;
+}
+
 .auth-message {
   margin: -4px 0 0;
   padding: 12px 14px;
@@ -633,6 +657,23 @@ button:active:not(:disabled), a[role="button"]:active {
 
 .auth-switch button {
   font-size: 14px;
+}
+
+.auth-verification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  margin-top: -8px;
+  color: #667085;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-verification-actions .auth-text-button {
+  min-height: 44px;
+  padding: 8px 0;
 }
 
 .auth-security {

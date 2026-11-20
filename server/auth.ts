@@ -1,14 +1,19 @@
 import express, { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import {
   getUserByEmail,
   getUserById,
   createUser,
+  cleanupExpiredEmailVerificationWindows,
+  deletePendingEmailVerification,
+  getPendingEmailVerification,
   getOrCreateOAuthUser,
+  savePendingEmailVerification,
   updateUserProfile,
   updateUserPassword,
+  verifyPendingEmailAndCreateUser,
   type OAuthProvider
 } from './db.ts';
 
@@ -234,6 +239,145 @@ function isValidPassword(password: string): boolean {
   return typeof password === 'string' && password.length >= 8;
 }
 
+const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CODE_RESEND_DELAY_MS = 60 * 1000;
+const EMAIL_CODE_WINDOW_MS = 60 * 60 * 1000;
+const EMAIL_CODE_MAX_SENDS_PER_WINDOW = 5;
+const EMAIL_CODE_MAX_ATTEMPTS = 5;
+
+class EmailDeliveryError extends Error {}
+
+function getEmailOtpSecret(): string | null {
+  const secret = process.env.EMAIL_OTP_SECRET?.trim();
+  return secret && secret.length >= 32 ? secret : null;
+}
+
+type EmailSender = { name: string; email: string };
+
+function parseEmailSender(value: string): EmailSender | null {
+  const match = /^"?([^"<]+?)"?\s*<([^<>]+)>$/.exec(value.trim());
+  if (!match) return null;
+
+  const name = match[1].trim();
+  const email = match[2].trim();
+  if (!name || !isValidEmail(email)) return null;
+  return { name, email };
+}
+
+function getEmailVerificationConfig(): { apiKey: string; sender: EmailSender; secret: string } | null {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  const from = process.env.EMAIL_FROM?.trim();
+  const sender = from ? parseEmailSender(from) : null;
+  const secret = getEmailOtpSecret();
+  if (!apiKey || !sender || !secret) return null;
+  return { apiKey, sender, secret };
+}
+
+function hashEmailVerificationCode(email: string, code: string, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`${email.toLowerCase().trim()}:${code}`)
+    .digest('hex');
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]!);
+}
+
+async function sendEmailVerificationCode(
+  email: string,
+  name: string,
+  code: string,
+  config: { apiKey: string; sender: EmailSender }
+): Promise<void> {
+  const safeName = escapeHtml(name);
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': config.apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        sender: config.sender,
+        to: [{ email }],
+        subject: 'Kode verifikasi akun Iventra',
+        htmlContent: `<div style="font-family:Arial,sans-serif;color:#14213d;line-height:1.6"><h2>Verifikasi email Iventra</h2><p>Halo ${safeName}, gunakan kode berikut untuk menyelesaikan pendaftaran:</p><p style="font-size:32px;font-weight:700;letter-spacing:8px;color:#2456df">${code}</p><p>Kode berlaku selama 10 menit. Jika kamu tidak meminta kode ini, abaikan email ini.</p></div>`
+      }),
+      signal: AbortSignal.timeout(10_000)
+    });
+
+    if (!response.ok) {
+      console.error('[auth/register/email] Brevo rejected the email request.', response.status);
+      throw new EmailDeliveryError('Email provider rejected the request.');
+    }
+  } catch (error) {
+    if (error instanceof EmailDeliveryError) throw error;
+    console.error('[auth/register/email] Brevo request failed.', error);
+    throw new EmailDeliveryError('Email provider request failed.');
+  }
+}
+
+function getEmailCodeRateLimit(
+  pending: NonNullable<ReturnType<typeof getPendingEmailVerification>>,
+  now: number
+): { retryAfterSeconds: number; message: string } | null {
+  if (pending.resend_after > now) {
+    return {
+      retryAfterSeconds: Math.ceil((pending.resend_after - now) / 1000),
+      message: 'Tunggu sebelum meminta kode baru.'
+    };
+  }
+
+  if (now - pending.window_started_at < EMAIL_CODE_WINDOW_MS &&
+      pending.sends_in_window >= EMAIL_CODE_MAX_SENDS_PER_WINDOW) {
+    return {
+      retryAfterSeconds: Math.ceil((pending.window_started_at + EMAIL_CODE_WINDOW_MS - now) / 1000),
+      message: 'Batas pengiriman kode tercapai. Coba lagi nanti.'
+    };
+  }
+
+  return null;
+}
+
+async function issueEmailVerificationCode(input: {
+  email: string;
+  name: string;
+  passwordHash: string;
+  config: { apiKey: string; sender: EmailSender; secret: string };
+  pending: ReturnType<typeof getPendingEmailVerification>;
+}): Promise<{ retryAfterSeconds: number }> {
+  const now = Date.now();
+  const currentPending = input.pending;
+  const windowExpired = !currentPending || now - currentPending.window_started_at >= EMAIL_CODE_WINDOW_MS;
+  const sendsInWindow = windowExpired ? 1 : currentPending.sends_in_window + 1;
+  const windowStartedAt = windowExpired ? now : currentPending.window_started_at;
+  const code = String(randomInt(100_000, 1_000_000));
+  const email = input.email.toLowerCase().trim();
+
+  savePendingEmailVerification({
+    email,
+    name: input.name,
+    password_hash: input.passwordHash,
+    code_hash: hashEmailVerificationCode(email, code, input.config.secret),
+    expires_at: now + EMAIL_CODE_TTL_MS,
+    attempts: 0,
+    sends_in_window: sendsInWindow,
+    window_started_at: windowStartedAt,
+    resend_after: now + EMAIL_CODE_RESEND_DELAY_MS
+  });
+
+  await sendEmailVerificationCode(email, input.name, code, input.config);
+
+  return { retryAfterSeconds: Math.ceil(EMAIL_CODE_RESEND_DELAY_MS / 1000) };
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.post('/oauth/:provider/start', (req: Request, res: Response) => {
@@ -372,25 +516,155 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Password minimal 8 karakter.' });
     }
 
-    // Check existing email
-    const existing = getUserByEmail(email);
-    if (existing) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (getUserByEmail(normalizedEmail)) {
       return res.status(409).json({ error: 'Email sudah terdaftar. Silakan login.' });
     }
 
-    const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const id = randomUUID();
+    const config = getEmailVerificationConfig();
+    if (!config) {
+      return res.status(503).json({
+        error: 'Verifikasi email belum dikonfigurasi. Lengkapi BREVO_API_KEY, EMAIL_FROM, dan EMAIL_OTP_SECRET.'
+      });
+    }
 
-    const user = createUser({ id, email, password_hash, name });
-    const token = signToken({ userId: user.id, email: user.email });
+    const now = Date.now();
+    cleanupExpiredEmailVerificationWindows(now);
+    const pending = getPendingEmailVerification(normalizedEmail);
+    if (pending) {
+      const rateLimit = getEmailCodeRateLimit(pending, now);
+      if (rateLimit) {
+        res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+        return res.status(429).json(rateLimit);
+      }
+    }
 
-    return res.status(201).json({
-      token,
-      user: sanitizeUser(user)
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const result = await issueEmailVerificationCode({
+      email: normalizedEmail,
+      name: name.trim(),
+      passwordHash,
+      config,
+      pending
+    });
+
+    return res.status(202).json({
+      verificationRequired: true,
+      email: normalizedEmail,
+      expiresInSeconds: Math.floor(EMAIL_CODE_TTL_MS / 1000),
+      resendAfterSeconds: result.retryAfterSeconds
     });
   } catch (error: any) {
     console.error('[auth/register]', error);
-    return res.status(500).json({ error: 'Terjadi kesalahan server. Coba lagi.' });
+    const isDeliveryError = error instanceof EmailDeliveryError;
+    return res.status(isDeliveryError ? 502 : 500).json({
+      error: isDeliveryError
+        ? 'Kode verifikasi gagal dikirim. Periksa konfigurasi email lalu coba lagi.'
+        : 'Terjadi kesalahan server. Coba lagi.'
+    });
+  }
+});
+
+router.post('/register/resend', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (typeof email !== 'string' || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Format email tidak valid.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const config = getEmailVerificationConfig();
+    if (!config) {
+      return res.status(503).json({
+        error: 'Verifikasi email belum dikonfigurasi. Lengkapi BREVO_API_KEY, EMAIL_FROM, dan EMAIL_OTP_SECRET.'
+      });
+    }
+
+    const now = Date.now();
+    cleanupExpiredEmailVerificationWindows(now);
+    const pending = getPendingEmailVerification(normalizedEmail);
+    if (!pending) {
+      return res.status(404).json({ error: 'Sesi verifikasi tidak ditemukan atau sudah kedaluwarsa. Silakan daftar kembali.' });
+    }
+
+    if (getUserByEmail(normalizedEmail)) {
+      deletePendingEmailVerification(normalizedEmail);
+      return res.status(409).json({ error: 'Email sudah terdaftar. Silakan login.' });
+    }
+
+    const rateLimit = getEmailCodeRateLimit(pending, now);
+    if (rateLimit) {
+      res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+      return res.status(429).json(rateLimit);
+    }
+
+    const result = await issueEmailVerificationCode({
+      email: normalizedEmail,
+      name: pending.name,
+      passwordHash: pending.password_hash,
+      config,
+      pending
+    });
+
+    return res.json({
+      verificationRequired: true,
+      email: normalizedEmail,
+      expiresInSeconds: Math.floor(EMAIL_CODE_TTL_MS / 1000),
+      resendAfterSeconds: result.retryAfterSeconds
+    });
+  } catch (error) {
+    console.error('[auth/register/resend]', error);
+    const isDeliveryError = error instanceof EmailDeliveryError;
+    return res.status(isDeliveryError ? 502 : 500).json({
+      error: isDeliveryError
+        ? 'Kode verifikasi gagal dikirim. Periksa konfigurasi email lalu coba lagi.'
+        : 'Terjadi kesalahan server. Coba lagi.'
+    });
+  }
+});
+
+router.post('/register/verify', (req: Request, res: Response) => {
+  try {
+    const { email, code } = req.body;
+    if (typeof email !== 'string' || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Format email tidak valid.' });
+    }
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Masukkan kode verifikasi 6 digit.' });
+    }
+
+    const secret = getEmailOtpSecret();
+    if (!secret) {
+      return res.status(503).json({ error: 'Verifikasi email belum dikonfigurasi di server.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const result = verifyPendingEmailAndCreateUser(
+      normalizedEmail,
+      hashEmailVerificationCode(normalizedEmail, code, secret),
+      Date.now(),
+      EMAIL_CODE_MAX_ATTEMPTS
+    );
+
+    if (result.status !== 'verified') {
+      const errors = {
+        invalid: { status: 400, message: 'Kode verifikasi salah.' },
+        locked: { status: 429, message: 'Batas percobaan kode tercapai. Minta kode baru untuk melanjutkan.' },
+        expired: { status: 400, message: 'Kode verifikasi sudah kedaluwarsa. Daftar kembali untuk menerima kode baru.' },
+        missing: { status: 404, message: 'Sesi verifikasi tidak ditemukan. Silakan daftar kembali.' },
+        already_registered: { status: 409, message: 'Email sudah terdaftar. Silakan login.' }
+      } as const;
+      const error = errors[result.status];
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    return res.json({
+      verified: true,
+      message: 'Verifikasi berhasil. Silakan login dengan email dan password Anda.'
+    });
+  } catch (error) {
+    console.error('[auth/register/verify]', error);
+    return res.status(500).json({ error: 'Verifikasi gagal diproses. Coba lagi.' });
   }
 });
 
