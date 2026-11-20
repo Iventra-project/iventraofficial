@@ -17,6 +17,7 @@ import AuthPage, { type AuthUser } from './components/AuthPage.tsx';
 import UserDashboard, { type Workspace } from './components/UserDashboard.tsx';
 import SparkBuilder from './components/spark/SparkBuilder.tsx';
 import PublicEventPage from './components/spark/PublicEventPage.tsx';
+import SparkProCheckoutPage from './components/SparkProCheckoutPage.tsx';
 
 // ─── Auth Helpers ─────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ function clearStoredAuth() {
 
 // ─── App Views ────────────────────────────────────────────────────────────────
 
-type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event';
+type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event' | 'spark-pro-checkout';
 
 function parseHash(hash: string): {
   view: AppView;
@@ -55,6 +56,9 @@ function parseHash(hash: string): {
   oauthToken?: string;
   oauthError?: string;
 } {
+  if (hash === '#spark-pro-checkout' || hash === '#checkout-pro') {
+    return { view: 'spark-pro-checkout' };
+  }
   if (hash.startsWith('#event/')) {
     const slug = hash.slice(7).split('?')[0];
     return { view: 'public-event', slug };
@@ -443,7 +447,18 @@ export default function App() {
     );
   }
 
-  // 6. PUBLIC LANDING PAGE (DEFAULT)
+  // 6. SPARK PRO CHECKOUT PAGE
+  if (view === 'spark-pro-checkout') {
+    return (
+      <SparkProCheckoutPage
+        onBack={handleBackToSite}
+        onOpenDashboard={handleOpenDashboard}
+        defaultPrice={siteSettings.sparkPrice || 'Rp 149.000'}
+      />
+    );
+  }
+
+  // 7. PUBLIC LANDING PAGE (DEFAULT)
   return (
     <LanguageProvider>
       <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
@@ -466,6 +481,10 @@ export default function App() {
           {/* Section 2 - Pricing / Pilihan Model: Clean Light Theme */}
           <ServicesSection
             onSelectPlan={(planId) => handleOpenConsultation(planId)}
+            onOpenSparkProCheckout={() => {
+              window.location.hash = '#spark-pro-checkout';
+              setView('spark-pro-checkout');
+            }}
             prices={pricesForServices}
           />
 

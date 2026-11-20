@@ -15,10 +15,10 @@ export interface Workspace {
   service_type: string;
   status: string;
   slug: string | null;
-  description: string | null;
+  description?: string | null;
   template_id?: string;
   draft_config?: string;
-  published_config?: string;
+  published_config?: string | null;
   published_at?: string | null;
   created_at: string;
   updated_at: string;

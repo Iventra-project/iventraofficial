@@ -1600,6 +1600,7 @@ export default function AdminDashboard({
                           owner_id: 'admin',
                           name: tmpl.defaultConfig?.eventName || tmpl.name,
                           slug: tmpl.id,
+                          description: tmpl.description || null,
                           service_type: 'spark' as const,
                           template_id: tmpl.id,
                           status: 'draft' as const,

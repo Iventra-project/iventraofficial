@@ -165,14 +165,14 @@ export default function Navbar({
         <div
           className={`relative pointer-events-auto flex items-center justify-between transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             isScrolled
-              ? 'w-full max-w-3xl h-[3.25rem] rounded-full border border-slate-200/90 bg-white/92 shadow-xl shadow-slate-900/5 backdrop-blur-xl px-4 sm:px-6'
+              ? 'w-full max-w-4xl h-[3.25rem] rounded-full border border-slate-200/90 bg-white/92 shadow-xl shadow-slate-900/5 backdrop-blur-xl px-5 sm:px-7'
               : 'w-full max-w-7xl h-[4.25rem] rounded-none border border-transparent bg-transparent shadow-none px-4 sm:px-6 lg:px-8'
           }`}
         >
           <a
             href="#overview"
             onClick={(event) => handleNavigationClick(event, 'overview')}
-            className="group flex shrink-0 items-center gap-2"
+            className="group flex shrink-0 items-center gap-2 mr-4 sm:mr-8"
           >
             <Logo size="sm" />
             <span className="font-display font-extrabold tracking-tight text-slate-900 text-lg sm:text-xl transition-colors duration-200 group-hover:text-blue-600">
@@ -182,13 +182,13 @@ export default function Navbar({
 
           <nav
             aria-label="Navigasi utama"
-            className="hidden items-center gap-1 md:flex"
+            className="hidden items-center gap-1.5 md:flex mx-auto"
             onMouseLeave={() => setHoveredSection(null)}
           >
             {renderNavLinks()}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-3.5 ml-4 sm:ml-8">
             {/* Language Switcher Toggle IDN / ENG */}
             <div className="flex items-center rounded-full border border-slate-200 bg-slate-100/90 p-0.5 text-[11px] font-semibold shadow-2xs">
               <button
