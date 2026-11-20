@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -59,6 +60,16 @@ export function initDb() {
       name TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS oauth_accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL CHECK (provider IN ('google', 'facebook')),
+      provider_user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (provider, provider_user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS workspaces (
@@ -496,6 +507,49 @@ export function createUser(user: { id: string; email: string; password_hash: str
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), now, now);
   return getUserById(user.id)!;
+}
+
+export type OAuthProvider = 'google' | 'facebook';
+
+export function getOrCreateOAuthUser(input: {
+  provider: OAuthProvider;
+  providerUserId: string;
+  email: string;
+  password_hash: string;
+  name: string;
+}): UserRow {
+  const linkAccount = db.transaction(() => {
+    const linkedAccount = db.prepare(
+      'SELECT user_id FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?'
+    ).get(input.provider, input.providerUserId) as { user_id: string } | undefined;
+
+    if (linkedAccount) {
+      const linkedUser = getUserById(linkedAccount.user_id);
+      if (!linkedUser) throw new Error('OAuth account is linked to a missing user.');
+      return linkedUser;
+    }
+
+    const email = input.email.trim().toLowerCase();
+    if (getUserByEmail(email)) {
+      throw new Error('OAuth email already in use.');
+    }
+
+    const user = createUser({
+      id: randomUUID(),
+      email,
+      password_hash: input.password_hash,
+      name: input.name
+    });
+
+    db.prepare(`
+      INSERT INTO oauth_accounts (user_id, provider, provider_user_id, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(user.id, input.provider, input.providerUserId, new Date().toISOString());
+
+    return user;
+  });
+
+  return linkAccount();
 }
 
 export function updateUserProfile(id: string, updates: { name?: string }): UserRow | null {
