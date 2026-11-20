@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { LanguageProvider } from './context/LanguageContext.tsx';
 import Navbar from './components/Navbar.tsx';
 import Hero from './components/Hero.tsx';
 import ServicesSection, { ServicesPrices } from './components/ServicesSection.tsx';
@@ -444,67 +445,69 @@ export default function App() {
 
   // 6. PUBLIC LANDING PAGE (DEFAULT)
   return (
-    <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
-      <Navbar
-        onOpenConsultation={() => handleOpenConsultation()}
-        onOpenDashboard={handleOpenDashboard}
-        isLoggedIn={!!(authToken && authUser)}
-        userName={authUser?.name}
-      />
-
-      <main className="w-full flex-1">
-        {/* Section 1 - Hero with Iventra background and event preview */}
-        <Hero
+    <LanguageProvider>
+      <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
+        <Navbar
           onOpenConsultation={() => handleOpenConsultation()}
-          onSelectCampus={() => {}}
-          totalProjectsHandled={siteSettings.totalProjectsHandled}
-          totalActiveUsers={siteSettings.totalActiveUsers}
+          onOpenDashboard={handleOpenDashboard}
+          isLoggedIn={!!(authToken && authUser)}
+          userName={authUser?.name}
         />
 
-        {/* Section 2 - Pricing / Pilihan Model: Clean Light Theme */}
-        <ServicesSection
-          onSelectPlan={(planId) => handleOpenConsultation(planId)}
-          prices={pricesForServices}
+        <main className="w-full flex-1">
+          {/* Section 1 - Hero with Iventra background and event preview */}
+          <Hero
+            onOpenConsultation={() => handleOpenConsultation()}
+            onSelectCampus={() => {}}
+            totalProjectsHandled={siteSettings.totalProjectsHandled}
+            totalActiveUsers={siteSettings.totalActiveUsers}
+          />
+
+          {/* Section 2 - Pricing / Pilihan Model: Clean Light Theme */}
+          <ServicesSection
+            onSelectPlan={(planId) => handleOpenConsultation(planId)}
+            prices={pricesForServices}
+          />
+
+          {/* Section 3 - Features Bento Grid: Background Gambar 3 (section-bg-blue.jpg) */}
+          <ComparisonSection />
+
+          {/* Section 4 - 3-Step Process & Testimonial Quote: Clean Light Theme */}
+          <ProcessSection />
+
+          {/* Section 5 - Call to Action Banner */}
+          <CtaSection
+            onOpenConsultation={() => handleOpenConsultation()}
+          />
+        </main>
+
+        <Footer
+          onOpenConsultation={() => handleOpenConsultation()}
+          onOpenTerms={(type) => setInfoModalType(type)}
+          onOpenAdmin={handleOpenAdmin}
         />
 
-        {/* Section 3 - Features Bento Grid: Background Gambar 3 (section-bg-blue.jpg) */}
-        <ComparisonSection />
-
-        {/* Section 4 - 3-Step Process & Testimonial Quote: Clean Light Theme */}
-        <ProcessSection />
-
-        {/* Section 5 - Call to Action Banner */}
-        <CtaSection
+        <FloatingWhatsApp
           onOpenConsultation={() => handleOpenConsultation()}
         />
-      </main>
 
-      <Footer
-        onOpenConsultation={() => handleOpenConsultation()}
-        onOpenTerms={(type) => setInfoModalType(type)}
-        onOpenAdmin={handleOpenAdmin}
-      />
+        <ConsultationModal
+          isOpen={isConsultationOpen}
+          onClose={() => setIsConsultationOpen(false)}
+          initialPlan={selectedPlan}
+        />
 
-      <FloatingWhatsApp
-        onOpenConsultation={() => handleOpenConsultation()}
-      />
+        <ProjectTrackerModal
+          isOpen={isTrackerOpen}
+          initialProjectId={trackerInitialId}
+          onClose={() => setIsTrackerOpen(false)}
+        />
 
-      <ConsultationModal
-        isOpen={isConsultationOpen}
-        onClose={() => setIsConsultationOpen(false)}
-        initialPlan={selectedPlan}
-      />
-
-      <ProjectTrackerModal
-        isOpen={isTrackerOpen}
-        initialProjectId={trackerInitialId}
-        onClose={() => setIsTrackerOpen(false)}
-      />
-
-      <InfoModal
-        type={infoModalType}
-        onClose={() => setInfoModalType(null)}
-      />
-    </div>
+        <InfoModal
+          type={infoModalType}
+          onClose={() => setInfoModalType(null)}
+        />
+      </div>
+    </LanguageProvider>
   );
 }

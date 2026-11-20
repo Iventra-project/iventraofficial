@@ -1,4 +1,5 @@
 import { Check, Star } from 'lucide-react';
+import { InteractiveHoverButton } from './interactive-hover-button.tsx';
 
 type PricingAction =
   | { href: string; onClick?: never }
@@ -99,26 +100,18 @@ export function Pricing({ plans, eyebrow, title, description }: PricingProps) {
 
               <hr className="my-6 w-full border-slate-200" />
 
-              {plan.onClick ? (
-                <button
-                  type="button"
-                  onClick={plan.onClick}
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-slate-900 px-4 text-center text-sm font-bold text-white transition-colors hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                >
-                  {plan.buttonText}
-                </button>
-              ) : (
-                <a
-                  href={plan.href}
-                  className={`inline-flex min-h-12 w-full items-center justify-center rounded-xl px-4 text-center text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-                    plan.isPopular
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-700'
-                      : 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50'
-                  }`}
-                >
-                  {plan.buttonText}
-                </a>
-              )}
+              <InteractiveHoverButton
+                text={plan.buttonText}
+                href={plan.href}
+                onClick={plan.onClick}
+                dotColor={plan.isPopular ? "bg-blue-600" : "bg-blue-600"}
+                hoverColor={plan.isPopular ? "group-hover:bg-blue-600" : "group-hover:bg-blue-600"}
+                className={`w-full min-h-12 rounded-xl text-sm font-bold shadow-xs ${
+                  plan.isPopular
+                    ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700 hover:border-blue-700 hover:shadow-md'
+                    : 'border border-slate-200 bg-white text-slate-800 hover:border-blue-600 hover:shadow-md'
+                }`}
+              />
               <p className="mt-5 text-xs leading-5 text-slate-500">{plan.description}</p>
             </article>
           ))}
