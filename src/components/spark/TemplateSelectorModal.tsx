@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SPARK_TEMPLATES, type TemplateId, getTemplateById } from '../../types/builder.ts';
+import { SPARK_TEMPLATES, type TemplateId, type TemplateDefinition, getTemplateById } from '../../types/builder.ts';
 import type { Workspace } from '../UserDashboard.tsx';
 import RealtimeWorkspaceThumbnail from './RealtimeWorkspaceThumbnail.tsx';
 
@@ -124,7 +124,7 @@ export default function TemplateSelectorModal({
 
                 const mockWorkspace: Workspace = {
                   id: `preview-${tmpl.id}`,
-                  user_id: 0,
+                  owner_id: 'preview',
                   name: tmpl.defaultConfig.eventName || tmpl.name,
                   slug: tmpl.id,
                   service_type: 'spark',

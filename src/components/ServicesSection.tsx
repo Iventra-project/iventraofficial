@@ -12,10 +12,11 @@ export interface ServicesPrices {
 
 interface ServicesSectionProps {
   onSelectPlan: (planId: 'spark' | 'flow' | 'bot') => void;
+  onOpenSparkProCheckout?: () => void;
   prices?: ServicesPrices;
 }
 
-export default function ServicesSection({ onSelectPlan, prices }: ServicesSectionProps) {
+export default function ServicesSection({ onSelectPlan, onOpenSparkProCheckout, prices }: ServicesSectionProps) {
   const { t } = useLanguage();
 
   const plans: PricingPlan[] = [
@@ -53,7 +54,13 @@ export default function ServicesSection({ onSelectPlan, prices }: ServicesSectio
       ],
       isPopular: true,
       buttonText: t.services.proBtn,
-      href: '#dashboard'
+      onClick: () => {
+        if (onOpenSparkProCheckout) {
+          onOpenSparkProCheckout();
+        } else {
+          window.location.hash = '#spark-pro-checkout';
+        }
+      }
     },
     {
       label: t.services.expertLabel,
