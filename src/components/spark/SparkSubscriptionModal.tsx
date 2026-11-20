@@ -1,13 +1,17 @@
+import { useState } from 'react';
+
 interface SparkSubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConsultationRequest?: () => void;
+  onRenewSuccess?: (durationDays: number, planName: string, price: string, extraTokens?: number) => void;
 }
 
 export default function SparkSubscriptionModal({
   isOpen,
   onClose,
-  onConsultationRequest
+  onConsultationRequest,
+  onRenewSuccess
 }: SparkSubscriptionModalProps) {
   if (!isOpen) return null;
 
@@ -33,6 +37,35 @@ export default function SparkSubscriptionModal({
       desc: 'Gunakan domain sendiri seperti eventkampus.ac.id atau namaevent.id untuk citra resmi.'
     }
   ];
+
+  const currentTier = tiers.find((t) => t.id === selectedTier) || tiers[0];
+
+  const getTargetExpiryFormatted = (days: number) => {
+    if (days === 0) return 'Mengikuti periode aktif berjalan';
+    const target = new Date();
+    target.setDate(target.getDate() + days);
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(target);
+  };
+
+  const handlePay = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      setIsProcessing(false);
+      if (onRenewSuccess) {
+        onRenewSuccess(
+          currentTier.durationDays,
+          currentTier.name,
+          currentTier.price,
+          currentTier.tokens
+        );
+      }
+      onClose();
+    }, 1200);
+  };
 
   return (
     <div
@@ -94,6 +127,20 @@ export default function SparkSubscriptionModal({
                 <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <span className="material-symbols-outlined text-[15px] font-bold">check</span>
                 </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('va')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
+                  paymentMethod === 'va'
+                    ? 'border-[#1f2de6] bg-[#f8f9ff] ring-1 ring-[#1f2de6]'
+                    : 'border-[#e2e5ea] bg-white hover:border-[#cbd5e1]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px] text-[#585d6b]">
+                  account_balance
+                </span>
                 <div>
                   <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-snug">
                     {feat.title}
@@ -102,8 +149,8 @@ export default function SparkSubscriptionModal({
                     {feat.desc}
                   </p>
                 </div>
-              </div>
-            ))}
+              </button>
+            </div>
           </div>
 
           {/* Special Price Note */}
@@ -129,7 +176,7 @@ export default function SparkSubscriptionModal({
             onClick={onClose}
             className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-white transition-colors cursor-pointer"
           >
-            Nanti Dulu
+            Batal
           </button>
 
           <button

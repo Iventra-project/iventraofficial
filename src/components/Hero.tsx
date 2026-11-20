@@ -23,7 +23,7 @@ export default function Hero({
       id="overview"
       className="relative w-full pt-20 pb-16 md:pb-24 overflow-hidden border-b border-slate-200/80"
       style={{
-        backgroundImage: `url('/assets/bg/hero-bg-grid.jpg')`,
+        backgroundImage: `url('/assets/bg/BackgroundIventra_Web2.svg')`,
         backgroundSize: 'cover',
         backgroundPosition: 'top center',
         backgroundRepeat: 'no-repeat'
@@ -33,17 +33,6 @@ export default function Hero({
         <ContainerScroll
           titleComponent={
             <div className="flex flex-col items-center justify-center text-center max-w-4xl mx-auto pb-4">
-              {/* Top Feature Pill */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 backdrop-blur-sm border border-blue-200/80 shadow-xs mb-6 hover:border-blue-300 transition-colors">
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
-                </span>
-                <span className="text-xs font-semibold text-blue-700">
-                  Baru di Iventra 2.0 • Web Event Siap dalam Kurang dari 5 Menit
-                </span>
-              </div>
-
               {/* Main Headline */}
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-display font-extrabold text-slate-900 tracking-tight leading-[1.12] mb-6">
                 Buat Website Event Profesional{' '}

@@ -1,25 +1,19 @@
 export default function ComparisonSection() {
   return (
     <section
-      className="w-full py-20 md:py-28 relative overflow-hidden text-white"
-      style={{
-        backgroundImage: `url('/assets/bg/section-bg-blue.jpg')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      }}
+      className="relative w-full overflow-hidden bg-white py-20 text-slate-900 md:py-28"
       id="features"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
-        <div className="max-w-2xl mb-16 text-left">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white font-semibold text-xs mb-3 border border-white/30 backdrop-blur-sm shadow-xs">
+        <div className="mb-16 max-w-2xl text-left">
+          <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
             <span>FITUR KHUSUS EVENT</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-extrabold text-white tracking-tight mb-4 drop-shadow-xs">
+          <h2 className="mb-4 text-3xl font-display font-extrabold tracking-tight text-slate-900 sm:text-4xl md:text-5xl">
             Dibangun Khusus untuk Alur Kerja Kepanitiaan Nyata
           </h2>
-          <p className="text-base text-blue-100 leading-relaxed font-medium">
+          <p className="text-base font-medium leading-relaxed text-slate-600">
             Bukan web builder umum. Setiap modul dirancang khusus menjawab kebutuhan kepanitiaan event di Indonesia.
           </p>
         </div>
@@ -27,7 +21,7 @@ export default function ComparisonSection() {
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
           {/* Card 1: Timeline-Driven Visibility (Col 7) */}
-          <div className="md:col-span-7 bg-white rounded-2xl border border-white/60 p-8 shadow-xl flex flex-col justify-between">
+          <div className="md:col-span-7 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-md">
             <div>
               <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-6 shadow-md shadow-blue-500/20">
                 <span className="material-symbols-outlined text-[24px]">schedule</span>
@@ -61,7 +55,7 @@ export default function ComparisonSection() {
           </div>
 
           {/* Card 2: Integrated Forms (Col 5) */}
-          <div className="md:col-span-5 bg-white rounded-2xl border border-white/60 p-8 shadow-xl flex flex-col justify-between">
+          <div className="md:col-span-5 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-md">
             <div>
               <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center mb-6 shadow-md shadow-emerald-500/20">
                 <span className="material-symbols-outlined text-[24px]">assignment</span>
@@ -84,7 +78,7 @@ export default function ComparisonSection() {
           </div>
 
           {/* Card 3: QR Ticket Ready (Col 5) */}
-          <div className="md:col-span-5 bg-white rounded-2xl border border-white/60 p-8 shadow-xl flex flex-col justify-between">
+          <div className="md:col-span-5 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-md">
             <div>
               <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-6 shadow-md shadow-blue-500/20">
                 <span className="material-symbols-outlined text-[24px]">qr_code_2</span>
@@ -109,7 +103,7 @@ export default function ComparisonSection() {
           </div>
 
           {/* Card 4: Real-time Visitor & Conversion Analytics (Col 7) */}
-          <div className="md:col-span-7 bg-white rounded-2xl border border-white/60 p-8 shadow-xl flex flex-col justify-between">
+          <div className="md:col-span-7 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-md">
             <div className="flex items-start justify-between">
               <div>
                 <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-6 shadow-md shadow-blue-500/20">

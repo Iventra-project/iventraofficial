@@ -1,33 +1,37 @@
 import { useEffect, useState, type MouseEvent } from 'react';
+import { motion } from 'motion/react';
+import { House, Layers3, Menu, Sparkles, Workflow, X } from 'lucide-react';
 import Logo from './Logo.tsx';
 
 interface NavbarProps {
-  onOpenTracker: () => void;
   onOpenConsultation: () => void;
-  onOpenProfile: () => void;
-  onOpenAdmin?: () => void;
   onOpenDashboard?: () => void;
   isLoggedIn?: boolean;
   userName?: string;
 }
 
+const navItems = [
+  { href: '#overview', label: 'Overview', id: 'overview', icon: House },
+  { href: '#pricing', label: 'Pilihan Model', id: 'pricing', icon: Layers3 },
+  { href: '#features', label: 'Fitur Khusus', id: 'features', icon: Sparkles },
+  { href: '#process', label: 'Alur Kerja', id: 'process', icon: Workflow }
+];
+
 export default function Navbar({
-  onOpenTracker,
   onOpenConsultation,
-  onOpenAdmin,
   onOpenDashboard,
   isLoggedIn = false,
   userName
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('overview');
-
-  const navItems = [
-    { href: '#overview', label: 'Overview', id: 'overview' },
-    { href: '#pricing', label: 'Pilihan Model', id: 'pricing' },
-    { href: '#features', label: 'Fitur Khusus', id: 'features' },
-    { href: '#process', label: 'Alur Kerja', id: 'process' }
-  ];
+  const [isScrolled, setIsScrolled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.scrollY > 40;
+  });
+  const [activeSection, setActiveSection] = useState(() => {
+    if (typeof window === 'undefined') return 'overview';
+    return navItems.find((item) => item.id === window.location.hash.slice(1))?.id ?? 'overview';
+  });
 
   const handleNavigationClick = (
     event: MouseEvent<HTMLAnchorElement>,
@@ -42,172 +46,159 @@ export default function Navbar({
       window.history.pushState(null, '', hash);
     }
     setActiveSection(sectionId);
-
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setMobileMenuOpen(false);
   };
 
   useEffect(() => {
     const handleScroll = () => {
+      setIsScrolled(window.scrollY > 40);
       const scrollY = window.scrollY + 100;
       for (const item of [...navItems].reverse()) {
-        const el = document.getElementById(item.id);
-        if (el && el.offsetTop <= scrollY) {
+        const section = document.getElementById(item.id);
+        if (section && section.offsetTop <= scrollY) {
           setActiveSection(item.id);
           break;
         }
       }
     };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const renderNavLinks = (mobile = false) => (
+    <>
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = activeSection === item.id;
+
+        return (
+          <a
+            key={item.id}
+            href={item.href}
+            aria-label={item.label}
+            aria-current={isActive ? 'location' : undefined}
+            title={mobile ? item.label : undefined}
+            onClick={(event) => handleNavigationClick(event, item.id)}
+            className={`relative isolate flex shrink-0 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors sm:px-4 ${
+              isActive ? 'text-blue-700' : 'text-slate-600 hover:text-blue-700'
+            }`}
+          >
+            {isActive && (
+              <motion.span
+                layoutId="iventra-nav-active"
+                className="absolute inset-0 -z-10 rounded-full bg-blue-50"
+                initial={false}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              >
+                <span className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-t-full bg-blue-600">
+                  <span className="absolute -left-2 -top-1 h-5 w-12 rounded-full bg-blue-400/25 blur-md" />
+                  <span className="absolute -top-1 left-1/2 h-5 w-8 -translate-x-1/2 rounded-full bg-blue-400/20 blur-md" />
+                </span>
+              </motion.span>
+            )}
+            <span className={mobile ? 'hidden md:inline' : undefined}>{item.label}</span>
+            {mobile && <Icon className="md:hidden" size={19} strokeWidth={2.25} aria-hidden="true" />}
+          </a>
+        );
+      })}
+    </>
+  );
+
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-        {/* Logo Brand */}
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className="flex items-center gap-2.5 group"
+    <>
+      <header
+        className={`fixed left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
+          isScrolled
+            ? 'top-3 w-max max-w-[calc(100vw-1rem)] rounded-full border border-slate-200 bg-white/95 shadow-lg shadow-slate-900/10 backdrop-blur-xl'
+            : 'top-0 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-xl'
+        }`}
+      >
+        <div
+          className={`mx-auto flex items-center justify-between transition-all duration-300 ${
+            isScrolled
+              ? 'h-14 gap-3 px-3 sm:gap-5 sm:px-5'
+              : 'h-[4.5rem] max-w-7xl px-4 sm:px-6 lg:px-8'
+          }`}
         >
-          <Logo size="sm" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-xl font-display font-extrabold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
+          <a
+            href="#overview"
+            onClick={(event) => handleNavigationClick(event, 'overview')}
+            className="group flex shrink-0 items-center gap-2.5"
+          >
+            <Logo size="sm" />
+            <span className="text-xl font-display font-extrabold tracking-tight text-slate-900 transition-colors group-hover:text-blue-600">
               IVENTRA
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60">
-              EVENT PLATFORM
-            </span>
-          </div>
-        </a>
+          </a>
 
-        {/* Center Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-          {navItems.map((item) => {
-            const isActive = activeSection === item.id;
-            return (
-              <a
-                key={item.id}
-                href={item.href}
-                onClick={(e) => handleNavigationClick(e, item.id)}
-                className={`transition-colors py-1 relative ${
-                  isActive
-                    ? 'text-blue-600 font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+          <nav
+            aria-label="Navigasi utama"
+            className={`hidden items-center gap-1 transition-all duration-300 md:flex ${
+              isScrolled
+                ? 'rounded-full p-0'
+                : 'rounded-full border border-slate-200 bg-white/80 p-1.5 shadow-sm'
+            }`}
+          >
+            {renderNavLinks()}
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-700 transition-colors hover:bg-slate-50 md:hidden"
+              aria-label={mobileMenuOpen ? 'Tutup menu' : 'Buka menu'}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
+            </button>
+
+            {onOpenDashboard && (
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                aria-label={isLoggedIn ? 'Buka dashboard profil' : 'Masuk'}
+                title={isLoggedIn ? 'Profil' : undefined}
+                className={
+                  isLoggedIn
+                    ? 'flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700 shadow-sm ring-2 ring-white transition-colors hover:bg-blue-200'
+                    : 'inline-flex min-h-10 items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow'
+                }
               >
-                {item.label}
-                {isActive && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                {isLoggedIn ? (
+                  <span>{(userName || 'U').charAt(0).toUpperCase()}</span>
+                ) : (
+                  <span>Masuk</span>
                 )}
-              </a>
-            );
-          })}
-        </nav>
-
-        {/* Right Action Buttons */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Tracker shortcut */}
-          <button
-            type="button"
-            onClick={onOpenTracker}
-            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 hover:border-slate-300 bg-white/80 transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[15px]">search</span>
-            <span>Cek Status</span>
-          </button>
-
-          {/* Admin shortcut */}
-          {onOpenAdmin && (
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="Akses Admin"
-            >
-              <span>admin</span>
-            </button>
-          )}
-
-          {/* Dashboard / Auth Button */}
-          {onOpenDashboard && (
-            <button
-              type="button"
-              onClick={onOpenDashboard}
-              className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-sm hover:shadow transition-all active:scale-[0.98] cursor-pointer"
-            >
-              {isLoggedIn ? (
-                <>
-                  <div className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px] font-bold">
-                    {(userName || 'U').charAt(0).toUpperCase()}
-                  </div>
-                  <span>Dashboard</span>
-                </>
-              ) : (
-                <>
-                  <span>Masuk Dashboard</span>
-                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Mobile menu trigger */}
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100"
-            aria-label="Toggle menu"
-          >
-            <span className="material-symbols-outlined text-[20px]">
-              {mobileMenuOpen ? 'close' : 'menu'}
-            </span>
-          </button>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 px-6 py-4 space-y-3">
-          {navItems.map((item) => (
-            <a
-              key={item.id}
-              href={item.href}
-              onClick={(e) => handleNavigationClick(e, item.id)}
-              className="block py-2 text-sm font-medium text-slate-700 hover:text-blue-600"
-            >
-              {item.label}
-            </a>
-          ))}
-          <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenTracker();
-              }}
-              className="w-full text-left py-2 text-xs text-slate-600 flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[16px]">search</span>
-              <span>Cek Status Project</span>
-            </button>
+        {mobileMenuOpen && (
+          <div className="absolute inset-x-4 top-[calc(100%+0.5rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl md:hidden">
             <button
               type="button"
               onClick={() => {
                 setMobileMenuOpen(false);
                 onOpenConsultation();
               }}
-              className="w-full text-left py-2 text-xs text-blue-600 font-semibold"
+              className="w-full rounded-xl bg-blue-50 px-4 py-3 text-left text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
             >
               Konsultasi Panitia Expert →
             </button>
           </div>
-        </div>
-      )}
-    </header>
+        )}
+      </header>
+
+      <nav
+        aria-label="Navigasi bagian"
+        className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200/90 bg-white/95 p-1.5 shadow-lg shadow-slate-900/10 backdrop-blur-xl md:hidden"
+      >
+        {renderNavLinks(true)}
+      </nav>
+    </>
   );
 }
