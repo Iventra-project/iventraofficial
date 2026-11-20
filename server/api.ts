@@ -27,7 +27,10 @@ import {
   getAllWorkspacesForAdmin,
   adminUpdateWorkspace,
   adminDeleteWorkspace,
-  getUserByEmail
+  getUserByEmail,
+  getAllTemplates,
+  saveTemplate,
+  deleteTemplate
 } from './db.ts';
 import authRouter from './auth.ts';
 import workspacesRouter from './workspaces.ts';
@@ -466,6 +469,72 @@ apiApp.post('/api/settings', (req: Request, res: Response) => {
   try {
     const updated = updateSiteSettings(req.body);
     res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Templates API (Admin & Showcase) ─────────────────────────────────────────
+apiApp.get('/api/templates', (_req: Request, res: Response) => {
+  try {
+    const list = getAllTemplates();
+    res.json(list.map(t => {
+      let conf = {};
+      try {
+        conf = typeof t.default_config === 'string' ? JSON.parse(t.default_config) : t.default_config;
+      } catch {}
+      return {
+        id: t.id,
+        name: t.name,
+        badge: t.badge,
+        category: t.category,
+        description: t.description,
+        previewGradient: t.preview_gradient,
+        recommendedFor: t.recommended_for,
+        defaultConfig: conf,
+        created_at: t.created_at
+      };
+    }));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiApp.post('/api/templates', (req: Request, res: Response) => {
+  try {
+    const { id, name, badge, category, description, previewGradient, recommendedFor, defaultConfig } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Nama template wajib diisi.' });
+    }
+    const cleanId = (id || name).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').trim();
+    const success = saveTemplate({
+      id: cleanId,
+      name,
+      badge: badge || 'Event',
+      category: category || 'Umum',
+      description: description || '',
+      preview_gradient: previewGradient || 'from-[#0c1df3] via-[#3b47dc] to-[#1e1b4b]',
+      recommended_for: recommendedFor || '',
+      default_config: JSON.stringify(defaultConfig || {}),
+      created_at: new Date().toISOString()
+    });
+    if (!success) {
+      return res.status(500).json({ error: 'Gagal menyimpan template ke database.' });
+    }
+    res.json({ success: true, id: cleanId });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiApp.delete('/api/templates/:id', (req: Request, res: Response) => {
+  try {
+    const id = req.params.id;
+    const success = deleteTemplate(id);
+    if (!success) {
+      return res.status(404).json({ error: 'Template tidak ditemukan atau gagal dihapus.' });
+    }
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

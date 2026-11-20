@@ -7,6 +7,7 @@ import SparkEventRenderer from './SparkEventRenderer.tsx';
 interface RealtimeWorkspaceThumbnailProps {
   workspace: Workspace;
   className?: string;
+  height?: number;
 }
 
 // Error boundary to gracefully catch any rendering errors inside the thumbnail
@@ -26,7 +27,7 @@ class ThumbnailErrorBoundary extends Component<{ children: ReactNode; fallback: 
   }
 }
 
-export default function RealtimeWorkspaceThumbnail({ workspace, className = '' }: RealtimeWorkspaceThumbnailProps) {
+export default function RealtimeWorkspaceThumbnail({ workspace, className = '', height }: RealtimeWorkspaceThumbnailProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(280);
 
@@ -100,7 +101,7 @@ export default function RealtimeWorkspaceThumbnail({ workspace, className = '' }
   // Virtual desktop width for rendering (1024px standard viewport)
   const baseWidth = 1024;
   const scale = containerWidth > 0 ? containerWidth / baseWidth : 0.273;
-  const targetHeight = 148;
+  const targetHeight = height || 148;
   const virtualHeight = Math.ceil(targetHeight / scale);
 
   const fallbackView = (
@@ -116,7 +117,8 @@ export default function RealtimeWorkspaceThumbnail({ workspace, className = '' }
   return (
     <div
       ref={containerRef}
-      className={`w-full h-[148px] bg-white relative overflow-hidden select-none pointer-events-none border-b border-[#e2e5ea] ${className}`}
+      style={height ? { height: `${height}px` } : undefined}
+      className={`w-full ${height ? '' : 'h-[148px]'} bg-white relative overflow-hidden select-none pointer-events-none border-b border-[#e2e5ea] ${className}`}
     >
       <ThumbnailErrorBoundary fallback={fallbackView}>
         <div

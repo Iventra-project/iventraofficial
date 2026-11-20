@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Logo from './Logo.tsx';
 import type { AuthUser } from './AuthPage.tsx';
-import GalleryHoverCarousel from '../../components/ui/gallery-hover-carousel.tsx';
 import TemplateSelectorModal from './spark/TemplateSelectorModal.tsx';
 import SparkSubscriptionModal from './spark/SparkSubscriptionModal.tsx';
 import RealtimeWorkspaceThumbnail from './spark/RealtimeWorkspaceThumbnail.tsx';
-import { getTemplateById, type TemplateId, SPARK_TEMPLATES, type EventConfig } from '../types/builder.ts';
+import { getTemplateById, type TemplateId, SPARK_TEMPLATES, BLANK_TEMPLATE, type TemplateDefinition, type EventConfig } from '../types/builder.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -275,6 +274,8 @@ export default function UserDashboard({
 
   // Modals
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [modalTemplateId, setModalTemplateId] = useState<TemplateId | undefined>(undefined);
+  const [dbTemplates, setDbTemplates] = useState<TemplateDefinition[]>(SPARK_TEMPLATES);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [editingWs, setEditingWs] = useState<Workspace | null>(null);
   const [deletingWs, setDeletingWs] = useState<Workspace | null>(null);
@@ -301,7 +302,7 @@ export default function UserDashboard({
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch {}
+      } catch { }
     }
     const pDate = new Date();
     pDate.setDate(pDate.getDate() - 9); // default purchased 9 days ago
@@ -342,7 +343,7 @@ export default function UserDashboard({
     const now = new Date();
     const currentExpire = new Date(subscription.expiresAt).getTime();
     const baseDate = currentExpire > now.getTime() ? new Date(subscription.expiresAt) : now;
-    const newExpire = durationDays > 0 
+    const newExpire = durationDays > 0
       ? new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
       : new Date(subscription.expiresAt);
 
@@ -422,7 +423,7 @@ export default function UserDashboard({
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch {}
+      } catch { }
     }
     return DEFAULT_NOTIFICATIONS;
   });
@@ -435,7 +436,7 @@ export default function UserDashboard({
     setNotifications(newNotifs);
     try {
       localStorage.setItem('iventra_event_notifications', JSON.stringify(newNotifs));
-    } catch {}
+    } catch { }
   };
 
   const handleMarkAllAsRead = () => {
@@ -558,6 +559,17 @@ export default function UserDashboard({
   useEffect(() => {
     loadWorkspaces();
   }, [loadWorkspaces]);
+
+  useEffect(() => {
+    fetch('/api/templates')
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDbTemplates(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (currentNav === 'workspaces') {
@@ -1065,15 +1077,20 @@ export default function UserDashboard({
 
         {/* Right Actions: Notifications, Create Website, User Profile */}
         <div className="flex items-center gap-3">
-          {/* Create Website CTA Button */}
-          <button
-            type="button"
-            onClick={() => setIsTemplateModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_circle</span>
-            <span>Buat Website Baru</span>
-          </button>
+          {/* Create Website CTA Button (Only shown on dashboard) */}
+          {currentNav === 'dashboard' && (
+            <button
+              type="button"
+              onClick={() => {
+                setModalTemplateId(undefined);
+                setIsTemplateModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span>Buat Website Baru</span>
+            </button>
+          )}
 
           {/* User Profile Pill */}
           <div className="flex items-center gap-2 pl-2 border-l border-[#e2e5ea]">
@@ -1137,23 +1154,7 @@ export default function UserDashboard({
                   </span>
                 </button>
 
-                {/* 3. Spark Builder */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (workspaces.length > 0) {
-                      onOpenBuilder(workspaces[0]);
-                    } else {
-                      setIsTemplateModalOpen(true);
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb] transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">auto_fix_high</span>
-                  <span>Spark Builder</span>
-                </button>
-
-                {/* 4. Templates */}
+                {/* 3. Templates */}
                 <button
                   type="button"
                   onClick={() => setCurrentNav('templates')}
@@ -1196,11 +1197,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setCurrentNav('notifications')}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    currentNav === 'notifications'
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${currentNav === 'notifications'
                       ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
                       : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined text-[18px]">notifications</span>
@@ -1303,32 +1303,31 @@ export default function UserDashboard({
                   const colorClass = isNearLimit
                     ? 'text-red-600'
                     : isWarning
-                    ? 'text-amber-600'
-                    : 'text-[#0b0c0e]';
+                      ? 'text-amber-600'
+                      : 'text-[#0b0c0e]';
 
                   const badgeBg = isNearLimit
                     ? 'bg-red-50 text-red-700 border-red-200'
                     : isWarning
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
                   const barColor = isNearLimit
                     ? 'bg-red-500'
                     : isWarning
-                    ? 'bg-amber-500'
-                    : 'bg-[#1f2de6]';
+                      ? 'bg-amber-500'
+                      : 'bg-[#1f2de6]';
 
                   const iconColor = isNearLimit
                     ? 'text-red-600'
                     : isWarning
-                    ? 'text-amber-600'
-                    : 'text-[#1f2de6]';
+                      ? 'text-amber-600'
+                      : 'text-[#1f2de6]';
 
                   return (
                     <div
-                      className={`p-5 rounded-xl bg-white border ${
-                        isNearLimit ? 'border-red-200' : 'border-[#e2e5ea]'
-                      } flex flex-col justify-between shadow-2xs`}
+                      className={`p-5 rounded-xl bg-white border ${isNearLimit ? 'border-red-200' : 'border-[#e2e5ea]'
+                        } flex flex-col justify-between shadow-2xs`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-mono font-bold text-[#585d6b] uppercase">
@@ -1518,29 +1517,29 @@ export default function UserDashboard({
                   {(workspaces.length > 0
                     ? workspaces
                     : [
-                        {
-                          id: 'demo-1',
-                          owner_id: user.id,
-                          name: 'National Tech Innovation Summit 2026',
-                          service_type: 'spark',
-                          status: 'published',
-                          slug: 'tech-summit-2026',
-                          description: null,
-                          created_at: new Date().toISOString(),
-                          updated_at: new Date().toISOString(),
-                        },
-                        {
-                          id: 'demo-2',
-                          owner_id: user.id,
-                          name: 'Untitled Event',
-                          service_type: 'spark',
-                          status: 'draft',
-                          slug: 'untitled-event',
-                          description: null,
-                          created_at: new Date().toISOString(),
-                          updated_at: new Date().toISOString(),
-                        },
-                      ]
+                      {
+                        id: 'demo-1',
+                        owner_id: user.id,
+                        name: 'National Tech Innovation Summit 2026',
+                        service_type: 'spark',
+                        status: 'published',
+                        slug: 'tech-summit-2026',
+                        description: null,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                      },
+                      {
+                        id: 'demo-2',
+                        owner_id: user.id,
+                        name: 'Untitled Event',
+                        service_type: 'spark',
+                        status: 'draft',
+                        slug: 'untitled-event',
+                        description: null,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                      },
+                    ]
                   ).map((ws, idx) => (
                     <div
                       key={ws.id}
@@ -1587,103 +1586,87 @@ export default function UserDashboard({
           {/* VIEW 2: MY WORKSPACES (OVERHAULED: Google Forms Layout + Iventra Clean Design) */}
           {currentNav === 'workspaces' && (
             <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-              {/* Header Title & Quick Action */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold mb-1">
-                    <span>Workspace Hub</span>
-                    <span>•</span>
-                    <span className="text-[#585d6b]">Formulir &amp; Website Event</span>
-                  </div>
-                  <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
-                    My Workspaces
-                  </h1>
+              {/* Header Title */}
+              <div>
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold mb-1">
+                  <span>Workspace Hub</span>
+                  <span>•</span>
+                  <span className="text-[#585d6b]">Formulir &amp; Website Event</span>
                 </div>
-
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={loadWorkspaces}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#e2e5ea] bg-white hover:bg-[#f4f5f8] text-[#0b0c0e] text-xs font-mono font-bold transition-colors cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">sync</span>
-                    <span>Sync</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsTemplateModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold tracking-tight shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">add</span>
-                    <span>+ Template Lengkap</span>
-                  </button>
-                </div>
+                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                  My Workspaces
+                </h1>
               </div>
 
               {/* ─── SECTION 1: START A NEW FORM (Google Forms Top Bar in Iventra Style) ─── */}
               <div className="rounded-2xl border border-[#e2e5ea] bg-white p-5 sm:p-6 shadow-2xs">
                 {/* Section Header */}
-                <div className="flex items-center justify-between pb-3.5">
+                <div className="pb-3.5">
                   <h3 className="font-heading text-sm font-bold text-[#0b0c0e] tracking-tight">
                     Mulai Formulir Baru
                   </h3>
-                  <button
-                    type="button"
-                    onClick={() => setIsTemplateModalOpen(true)}
-                    className="text-xs font-mono font-bold text-[#1f2de6] hover:underline flex items-center gap-1"
-                  >
-                    <span>Galeri Template</span>
-                    <span className="material-symbols-outlined text-[15px]">unfold_more</span>
-                  </button>
                 </div>
 
-                {/* 5 Preset Template Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                  {FORM_PRESETS.map((tmpl) => {
+                {/* Template Cards: Blank Canvas + 3 Core Templates */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[BLANK_TEMPLATE, ...SPARK_TEMPLATES.slice(0, 3)].map((tmpl) => {
                     const isBlank = tmpl.id === 'blank';
+
+                    const mockWorkspace: Workspace = {
+                      id: `quick-tmpl-${tmpl.id}`,
+                      owner_id: user.id,
+                      name: tmpl.defaultConfig.eventName || tmpl.name,
+                      slug: tmpl.id,
+                      service_type: 'spark',
+                      template_id: tmpl.id,
+                      status: 'draft',
+                      draft_config: JSON.stringify(tmpl.defaultConfig),
+                      published_config: null,
+                      created_at: '',
+                      updated_at: ''
+                    };
+
                     return (
                       <div
                         key={tmpl.id}
-                        onClick={() => handleQuickCreateForm(tmpl)}
-                        className="flex flex-col cursor-pointer group select-none"
+                        onClick={() => {
+                          setModalTemplateId(tmpl.id);
+                          setIsTemplateModalOpen(true);
+                        }}
+                        className="group flex flex-col rounded-xl border border-[#e2e5ea] bg-white hover:border-[#1f2de6] hover:shadow-md transition-all cursor-pointer p-2.5 text-left select-none"
                       >
-                        {/* Card Box */}
-                        <div className="h-[124px] rounded-xl border border-[#e2e5ea] bg-[#f8f9fb] group-hover:bg-white group-hover:border-[#1f2de6] group-hover:shadow-md transition-all relative flex flex-col overflow-hidden">
-                          {isBlank ? (
-                            /* Google Plus Style with Iventra Palette */
-                            <div className="flex items-center justify-center w-full h-full bg-white">
-                              <div className="w-11 h-11 rounded-full bg-[#edf2ff] group-hover:bg-[#1f2de6] flex items-center justify-center transition-colors">
-                                <span className="material-symbols-outlined text-[26px] text-[#1f2de6] group-hover:text-white transition-colors">
-                                  add
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            /* Document Preview Mockup */
-                            <div className="w-full h-full p-2.5 flex flex-col">
-                              {/* Accent Top Strip */}
-                              <div
-                                className="h-2 rounded-t-sm w-full mb-2 shrink-0"
-                                style={{ backgroundColor: tmpl.accentColor }}
-                              />
-                              {/* Document Body */}
-                              <div className="bg-white rounded-md p-2 shadow-2xs border border-[#e2e5ea] flex-1 flex flex-col gap-1.5 overflow-hidden">
-                                <div className="h-2 bg-[#0b0c0e]/80 rounded-xs w-3/4 mb-0.5" />
-                                <div className="h-1 bg-[#e2e5ea] rounded-xs w-full" />
-                                <div className="h-1 bg-[#e2e5ea] rounded-xs w-2/3" />
-                                <div className="mt-1 pt-1 border-t border-[#f1f3f4] flex flex-col gap-1">
-                                  <div className="h-1.5 bg-[#8c93a0] rounded-xs w-1/2" />
-                                  <div className="h-2 border border-[#e2e5ea] rounded-xs w-full bg-[#f8f9fb]" />
+                        {/* Browser Mockup Box */}
+                        <div className="relative h-[160px] w-full rounded-lg overflow-hidden bg-[#f8f9fb] border border-[#e2e5ea] flex flex-col">
+                          {/* Browser Mockup Top Bar */}
+                          <div className="h-5 bg-[#f4f5f8] border-b border-[#e2e5ea] px-2 flex items-center gap-1 shrink-0">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                          </div>
+
+                          {/* Content Preview */}
+                          <div className="flex-1 w-full relative overflow-hidden bg-white">
+                            {isBlank ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-white">
+                                <div className="w-10 h-10 rounded-full bg-[#edf2ff] group-hover:bg-[#1f2de6] flex items-center justify-center transition-colors">
+                                  <span className="material-symbols-outlined text-[24px] text-[#1f2de6] group-hover:text-white transition-colors">
+                                    add
+                                  </span>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                            ) : (
+                              <RealtimeWorkspaceThumbnail
+                                workspace={mockWorkspace}
+                                height={140}
+                                className="w-full h-full border-none"
+                              />
+                            )}
+                          </div>
                         </div>
 
-                        {/* Title Label Underneath */}
-                        <span className="mt-2 text-xs font-semibold text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors truncate">
-                          {tmpl.title}
+                        {/* Title Underneath */}
+                        <span className="mt-2.5 text-xs font-bold text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors truncate">
+                          {tmpl.name}
                         </span>
                       </div>
                     );
@@ -2017,15 +2000,83 @@ export default function UserDashboard({
           {/* VIEW 3: TEMPLATES SHOWCASE */}
           {currentNav === 'templates' && (
             <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-              <div className="p-6 rounded-2xl bg-white border border-[#e2e5ea] shadow-2xs">
-                <GalleryHoverCarousel
-                  heading="Template Event Siap Pakai"
-                  subheading="Pilih arsitektur desain yang dirancang khusus untuk konferensi, kompetisi nasional, maupun festival kampus."
-                  onSelectItem={() => {
-                    setIsTemplateModalOpen(true);
-                  }}
-                  className="py-0"
-                />
+              <div>
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[#1f2de6] font-bold mb-1">
+                  <span>Template Gallery</span>
+                  <span>•</span>
+                  <span className="text-[#585d6b]">Pilihan Desain Siap Pakai</span>
+                </div>
+                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#0b0c0e] tracking-tight">
+                  Template Website Event
+                </h1>
+              </div>
+
+              {/* Grid of 6 Template Cards (3 columns, 2 rows) */}
+              <div className="rounded-2xl border border-[#e2e5ea] bg-white p-5 sm:p-6 shadow-2xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {dbTemplates.map((tmpl) => {
+                    const mockWorkspace: Workspace = {
+                      id: `tmpl-page-${tmpl.id}`,
+                      owner_id: user.id,
+                      name: tmpl.defaultConfig?.eventName || tmpl.name,
+                      slug: tmpl.id,
+                      service_type: 'spark',
+                      template_id: tmpl.id,
+                      status: 'draft',
+                      draft_config: JSON.stringify(tmpl.defaultConfig || {}),
+                      published_config: null,
+                      created_at: '',
+                      updated_at: ''
+                    };
+
+                    return (
+                      <div
+                        key={tmpl.id}
+                        onClick={() => {
+                          setModalTemplateId(tmpl.id);
+                          setIsTemplateModalOpen(true);
+                        }}
+                        className="group flex flex-col rounded-xl border border-[#e2e5ea] bg-white hover:border-[#1f2de6] hover:shadow-md transition-all cursor-pointer p-3 text-left select-none"
+                      >
+                        {/* Browser Mockup Box */}
+                        <div className="relative h-[160px] w-full rounded-lg overflow-hidden bg-[#f8f9fb] border border-[#e2e5ea] flex flex-col">
+                          {/* Browser Mockup Top Bar */}
+                          <div className="h-5 bg-[#f4f5f8] border-b border-[#e2e5ea] px-2 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                            </div>
+                            <span className="text-[9px] font-mono text-[#8c93a0] truncate max-w-[120px]">
+                              {tmpl.category}
+                            </span>
+                          </div>
+
+                          {/* Content Preview */}
+                          <div className="flex-1 w-full relative overflow-hidden bg-white">
+                            <RealtimeWorkspaceThumbnail
+                              workspace={mockWorkspace}
+                              height={140}
+                              className="w-full h-full border-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Title Underneath */}
+                        <div className="mt-2.5 flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-[#0b0c0e] group-hover:text-[#1f2de6] transition-colors truncate">
+                            {tmpl.name}
+                          </span>
+                          {tmpl.badge && (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-[#edf2ff] text-[#1f2de6] shrink-0">
+                              {tmpl.badge}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -2403,18 +2454,16 @@ export default function UserDashboard({
                       key={tab.id}
                       type="button"
                       onClick={() => setNotifFilter(tab.id as any)}
-                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                        isActive
+                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${isActive
                           ? 'bg-[#0b0c0e] text-white shadow-2xs'
                           : 'bg-white border border-[#e2e5ea] text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
-                      }`}
+                        }`}
                     >
                       <span>{tab.label}</span>
                       {tab.count !== undefined && (
                         <span
-                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                            isActive ? 'bg-white/20 text-white' : 'bg-[#f0f2f5] text-[#585d6b]'
-                          }`}
+                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-[#f0f2f5] text-[#585d6b]'
+                            }`}
                         >
                           {tab.count}
                         </span>
@@ -2471,11 +2520,10 @@ export default function UserDashboard({
                     return (
                       <div
                         key={notif.id}
-                        className={`group bg-white rounded-xl border transition-all duration-200 p-4 sm:p-5 flex items-start gap-4 ${
-                          !notif.read
+                        className={`group bg-white rounded-xl border transition-all duration-200 p-4 sm:p-5 flex items-start gap-4 ${!notif.read
                             ? 'border-[#1f2de6]/30 shadow-xs bg-gradient-to-r from-blue-50/25 via-white to-white'
                             : 'border-[#e2e5ea] hover:border-[#ccd2db]'
-                        }`}
+                          }`}
                       >
                         {/* Icon */}
                         <div className="relative shrink-0 mt-0.5">
@@ -2573,11 +2621,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setSettingsTab('profile')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                    settingsTab === 'profile'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${settingsTab === 'profile'
                       ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
                       : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">person</span>
                   <span>Profil Panitia</span>
@@ -2585,11 +2632,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setSettingsTab('security')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                    settingsTab === 'security'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${settingsTab === 'security'
                       ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
                       : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">shield</span>
                   <span>Keamanan &amp; Sandi</span>
@@ -2597,11 +2643,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setSettingsTab('notifications')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                    settingsTab === 'notifications'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${settingsTab === 'notifications'
                       ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
                       : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">tune</span>
                   <span>Preferensi Alert</span>
@@ -2609,11 +2654,10 @@ export default function UserDashboard({
                 <button
                   type="button"
                   onClick={() => setSettingsTab('account')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                    settingsTab === 'account'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${settingsTab === 'account'
                       ? 'bg-white text-[#0b0c0e] shadow-2xs font-bold'
                       : 'text-[#585d6b] hover:text-[#0b0c0e]'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
                   <span>Sesi &amp; Keluar</span>
@@ -2865,11 +2909,10 @@ export default function UserDashboard({
                         <h2 className="font-heading text-base font-bold text-[#0b0c0e]">
                           Autentikasi Dua Langkah (2FA)
                         </h2>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${
-                          twoFactorEnabled
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${twoFactorEnabled
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-zinc-100 text-zinc-600 border border-zinc-200'
-                        }`}>
+                          }`}>
                           {twoFactorEnabled ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </div>
@@ -2883,14 +2926,12 @@ export default function UserDashboard({
                       role="switch"
                       aria-checked={twoFactorEnabled}
                       onClick={handleToggle2FA}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        twoFactorEnabled ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                      }`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${twoFactorEnabled ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                        }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                          twoFactorEnabled ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${twoFactorEnabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
                       />
                     </button>
                   </div>
@@ -2987,14 +3028,12 @@ export default function UserDashboard({
                           role="switch"
                           aria-checked={notifNewRegistration}
                           onClick={() => setNotifNewRegistration(!notifNewRegistration)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            notifNewRegistration ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                          }`}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifNewRegistration ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                              notifNewRegistration ? 'translate-x-4' : 'translate-x-0'
-                            }`}
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${notifNewRegistration ? 'translate-x-4' : 'translate-x-0'
+                              }`}
                           />
                         </button>
                       </div>
@@ -3014,14 +3053,12 @@ export default function UserDashboard({
                           role="switch"
                           aria-checked={notifTicketLow}
                           onClick={() => setNotifTicketLow(!notifTicketLow)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            notifTicketLow ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                          }`}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifTicketLow ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                              notifTicketLow ? 'translate-x-4' : 'translate-x-0'
-                            }`}
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${notifTicketLow ? 'translate-x-4' : 'translate-x-0'
+                              }`}
                           />
                         </button>
                       </div>
@@ -3041,14 +3078,12 @@ export default function UserDashboard({
                           role="switch"
                           aria-checked={notifWaTickets}
                           onClick={() => setNotifWaTickets(!notifWaTickets)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            notifWaTickets ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                          }`}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifWaTickets ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                              notifWaTickets ? 'translate-x-4' : 'translate-x-0'
-                            }`}
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${notifWaTickets ? 'translate-x-4' : 'translate-x-0'
+                              }`}
                           />
                         </button>
                       </div>
@@ -3068,14 +3103,12 @@ export default function UserDashboard({
                           role="switch"
                           aria-checked={notifDailyRecap}
                           onClick={() => setNotifDailyRecap(!notifDailyRecap)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            notifDailyRecap ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                          }`}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifDailyRecap ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                              notifDailyRecap ? 'translate-x-4' : 'translate-x-0'
-                            }`}
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${notifDailyRecap ? 'translate-x-4' : 'translate-x-0'
+                              }`}
                           />
                         </button>
                       </div>
@@ -3095,14 +3128,12 @@ export default function UserDashboard({
                           role="switch"
                           aria-checked={notifSystemBroadcast}
                           onClick={() => setNotifSystemBroadcast(!notifSystemBroadcast)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            notifSystemBroadcast ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
-                          }`}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifSystemBroadcast ? 'bg-[#1f2de6]' : 'bg-[#d1d5dc]'
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                              notifSystemBroadcast ? 'translate-x-4' : 'translate-x-0'
-                            }`}
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${notifSystemBroadcast ? 'translate-x-4' : 'translate-x-0'
+                              }`}
                           />
                         </button>
                       </div>
@@ -3339,6 +3370,8 @@ export default function UserDashboard({
         onCreate={handleCreateWithTemplate}
         isCreating={isCreatingWorkspace}
         error={templateCreateError}
+        initialTemplateId={modalTemplateId}
+        templates={dbTemplates}
       />
 
       {/* ─── SPARK SUBSCRIPTION MODAL ───────────────────────────────────────── */}

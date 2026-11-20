@@ -1,4 +1,12 @@
-export type TemplateId = 'blank' | 'tech-summit' | 'campus-competition' | 'creative-fest';
+export type TemplateId =
+  | 'blank'
+  | 'tech-summit'
+  | 'campus-competition'
+  | 'creative-fest'
+  | 'workshop-bootcamp'
+  | 'career-expo'
+  | 'charity-volunteer'
+  | string;
 
 export type EventBlockType =
   | 'hero'
@@ -407,37 +415,36 @@ export function ensureConfigBlocks(config: EventConfig): EventBlock[] {
   return blocks;
 }
 
-export const SPARK_TEMPLATES: TemplateDefinition[] = [
-  // ─── 0. BLANK CANVAS ─────────────────────────────────────────────────────────
-  {
-    id: 'blank',
-    name: 'Blank Canvas (Kosongan)',
-    badge: 'Mulai dari Nol',
-    category: 'Formulir Bebas',
-    description: 'Halaman kosong tanpa blok bawaan, seperti membuat formulir Google Form baru. Tambahkan fitur judul, formulir, rundown, dan komponen sesuka Anda.',
-    previewGradient: 'from-slate-100 via-slate-200 to-slate-300',
-    recommendedFor: 'Event Kustom, Formulir Pendaftaran Bebas, Acara Mandiri',
-    defaultConfig: {
-      eventName: 'Untitled Event',
-      tagline: '',
-      description: 'Deskripsi acara dan petunjuk pendaftaran peserta.',
-      institutionName: '',
-      logoUrl: '',
-      bannerUrl: '',
-      eventDateText: '',
-      eventLocationText: '',
-      isOnline: false,
-      statusBadgeText: '',
-      theme: {
-        primaryColor: '#1f2de6',
-        accentColor: '#3b47dc',
-        bgStyle: 'clean-white',
-        fontFamily: 'sans'
-      },
-      blocks: []
-    }
-  },
+export const BLANK_TEMPLATE: TemplateDefinition = {
+  id: 'blank',
+  name: 'Blank Canvas (Kosongan)',
+  badge: 'Mulai dari Nol',
+  category: 'Formulir Bebas',
+  description: 'Halaman kosong tanpa blok bawaan, seperti membuat formulir Google Form baru. Tambahkan fitur judul, formulir, rundown, dan komponen sesuka Anda.',
+  previewGradient: 'from-slate-100 via-slate-200 to-slate-300',
+  recommendedFor: 'Event Kustom, Formulir Pendaftaran Bebas, Acara Mandiri',
+  defaultConfig: {
+    eventName: 'Untitled Event',
+    tagline: '',
+    description: 'Deskripsi acara dan petunjuk pendaftaran peserta.',
+    institutionName: '',
+    logoUrl: '',
+    bannerUrl: '',
+    eventDateText: '',
+    eventLocationText: '',
+    isOnline: false,
+    statusBadgeText: '',
+    theme: {
+      primaryColor: '#1f2de6',
+      accentColor: '#3b47dc',
+      bgStyle: 'clean-white',
+      fontFamily: 'sans'
+    },
+    blocks: []
+  }
+};
 
+export const SPARK_TEMPLATES: TemplateDefinition[] = [
   // ─── 1. TECH SUMMIT ──────────────────────────────────────────────────────────
   {
     id: 'tech-summit',
@@ -452,8 +459,8 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
       tagline: 'Membangun Ekosistem Digital Berkelanjutan Melalui Inovasi Mahasiswa',
       description: 'Konferensi tahunan mahasiswa terdepan menghadirkan pakar industri kecerdasan buatan, cloud computing, dan rekayasa perangkat lunak se-Indonesia.',
       institutionName: 'BEM Fakultas Teknik & Ilmu Komputer',
-      logoUrl: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?w=160&auto=format&fit=crop&q=80',
-      bannerUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80',
+      logoUrl: '',
+      bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
       eventDateText: 'Sabtu, 24 Oktober 2026 • 08.30 - 16.00 WIB',
       eventLocationText: 'Auditorium Utama & Hybrid Zoom Meeting',
       isOnline: true,
@@ -476,7 +483,7 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
             tagline: 'Membangun Ekosistem Digital Berkelanjutan Melalui Inovasi Mahasiswa',
             dateText: 'Sabtu, 24 Oktober 2026 • 08.30 - 16.00 WIB',
             locationText: 'Auditorium Utama & Hybrid Zoom Meeting',
-            bannerUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80',
+            bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
             badgeText: '',
             buttons: [
               { id: 'btn-1', enabled: true, label: 'Daftar Sekarang', targetType: 'block', targetBlockId: 'ts-form' },
@@ -549,7 +556,7 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
       description: 'Ajang kompetisi studi kasus bisnis bergengsi tingkat nasional memperebutkan total hadiah 45 Juta Rupiah.',
       institutionName: 'Management Student Society (MSS)',
       logoUrl: '',
-      bannerUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=1200&auto=format&fit=crop&q=80',
+      bannerUrl: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1200&auto=format&fit=crop&q=80',
       eventDateText: 'Pendaftaran Dibuka s/d 15 November 2026',
       eventLocationText: 'Online Preliminary & Grand Final di Jakarta',
       isOnline: false,
@@ -576,10 +583,24 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
           }
         },
         {
+          id: 'cc-timeline',
+          type: 'timeline',
+          title: 'Tahapan Kompetisi',
+          subtitle: 'Rangkaian seleksi dari tahap proposal hingga grand final',
+          enabled: true,
+          data: {
+            items: [
+              { id: 't-1', name: 'Submisi Proposal', description: 'Pengunggahan berkas proposal bisnis.', startDate: '01 Nov 2026', endDate: '15 Nov 2026', order: 1, status: 'active', isRegistrationStage: true },
+              { id: 't-2', name: 'Pengumuman Finalis', description: 'Top 10 tim melaju ke babak pitching.', startDate: '20 Nov 2026', endDate: '20 Nov 2026', order: 2, status: 'upcoming' },
+              { id: 't-3', name: 'Grand Final Pitching', description: 'Presentasi langsung di hadapan dewan juri.', startDate: '28 Nov 2026', endDate: '29 Nov 2026', order: 3, status: 'upcoming' }
+            ]
+          }
+        },
+        {
           id: 'cc-form',
           type: 'form',
           title: 'Formulir Pendaftaran Tim',
-          subtitle: 'Pendaftaran 1 tim beranggotakan 3 mahasiswa',
+          subtitle: 'Pendaftaran 1 tim beranggotakan 3 mahasiswa aktif',
           enabled: true,
           data: {
             buttonText: 'Submit Pendaftaran Tim',
@@ -590,8 +611,9 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
                 id: 'step-1',
                 title: 'Alur 1',
                 fields: [
-                  { id: 'f-1', label: 'Nama Tim', type: 'text', required: true, placeholder: 'Contoh: Tim Garuda' },
-                  { id: 'f-2', label: 'Email Ketua', type: 'text', required: true, placeholder: 'ketua@kampus.ac.id' }
+                  { id: 'f-1', label: 'Nama Tim', type: 'text', required: true, placeholder: 'Contoh: Tim Garuda Inovasi' },
+                  { id: 'f-2', label: 'Email Ketua', type: 'text', required: true, placeholder: 'ketua@kampus.ac.id' },
+                  { id: 'f-3', label: 'Asal Perguruan Tinggi', type: 'text', required: true, placeholder: 'Universitas / Institut' }
                 ]
               }
             ]
@@ -613,10 +635,10 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
     defaultConfig: {
       eventName: 'Gelora Mahakarya Festival 2026',
       tagline: 'Merayakan Ekspresi Seni, Budaya Kreatif, dan Harmoni Musik Generasi Muda',
-      description: 'Panggung seni dan musik terbesar di lingkungan kampus menampilkan deretan musisi indie.',
+      description: 'Panggung seni dan musik terbesar di lingkungan kampus menampilkan deretan musisi indie dan pameran instalasi seni.',
       institutionName: 'Dewan Kesenian & BEM Mahasiswa',
       logoUrl: '',
-      bannerUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=1200&auto=format&fit=crop&q=80',
+      bannerUrl: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=1200&auto=format&fit=crop&q=80',
       eventDateText: 'Jumat - Minggu, 20-22 November 2026',
       eventLocationText: 'Lapangan Terbuka Kampus Utama',
       isOnline: false,
@@ -638,15 +660,25 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
             headline: 'Gelora Mahakarya Festival 2026',
             tagline: 'Merayakan Ekspresi Seni dan Harmoni Musik',
             buttons: [
-              { id: 'btn-1', enabled: true, label: 'Beli Tiket', targetType: 'block', targetBlockId: 'cf-form' }
+              { id: 'btn-1', enabled: true, label: 'Beli Tiket Sekarang', targetType: 'block', targetBlockId: 'cf-form' }
             ]
+          }
+        },
+        {
+          id: 'cf-text',
+          type: 'text',
+          title: 'Tentang Festival',
+          subtitle: 'Pengalaman Seni & Musik Imersif',
+          enabled: true,
+          data: {
+            content: 'Perayaan seni lintas disiplin menghadirkan konser live musik, mural live painting, dan pasar kreatif kriya mahasiswa.'
           }
         },
         {
           id: 'cf-form',
           type: 'form',
           title: 'Formulir Reservasi Tiket',
-          subtitle: 'Amankan e-voucher festival sebelum kuota habis',
+          subtitle: 'Amankan e-voucher festival resmi sebelum kuota presale habis',
           enabled: true,
           data: {
             buttonText: 'Pesan Tiket Sekarang',
@@ -658,7 +690,258 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
                 title: 'Alur 1',
                 fields: [
                   { id: 'f-1', label: 'Nama Pemesan', type: 'text', required: true, placeholder: 'Nama sesuai KTP/KTM' },
-                  { id: 'f-2', label: 'Email Tiket', type: 'text', required: true, placeholder: 'email@anda.com' }
+                  { id: 'f-2', label: 'Email Tiket', type: 'text', required: true, placeholder: 'email@anda.com' },
+                  { id: 'f-3', label: 'Kategori Tiket', type: 'choice', required: true, options: ['Presale 1 (Rp 45.000)', 'VIP Pass + Merchandise (Rp 95.000)'] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+
+  // ─── 4. WORKSHOP & BOOTCAMP ──────────────────────────────────────────────────
+  {
+    id: 'workshop-bootcamp',
+    name: 'Interactive Workshop & Masterclass',
+    badge: 'Hands-on Lab',
+    category: 'Workshop & Pelatihan',
+    description: 'Format fokus instruksional untuk kelas intensif koding, desain UI/UX, data science, dan workshop teknis interaktif.',
+    previewGradient: 'from-[#0284c7] via-[#0ea5e9] to-[#0369a1]',
+    recommendedFor: 'Bootcamp Koding, UI/UX Masterclass, Pelatihan Bisnis, Sertifikasi',
+    defaultConfig: {
+      eventName: 'Fullstack & AI Engineering Masterclass 2026',
+      tagline: 'Pelatihan Praktis Intensif Membangun Aplikasi Skalabel Berbasis AI Agent',
+      description: 'Program akselerasi kompetensi digital 2 hari bersama principal engineer industri teknologi papan atas.',
+      institutionName: 'Himpunan Mahasiswa Informatika & Komputer',
+      logoUrl: '',
+      bannerUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&auto=format&fit=crop&q=80',
+      eventDateText: 'Sabtu - Minggu, 14-15 November 2026 • 09.00 - 16.30 WIB',
+      eventLocationText: 'Lab Komputasi Gedung Baru & Online Zoom Room',
+      isOnline: true,
+      statusBadgeText: '',
+      theme: {
+        primaryColor: '#0284c7',
+        accentColor: '#0ea5e9',
+        bgStyle: 'clean-white',
+        fontFamily: 'sans'
+      },
+      blocks: [
+        {
+          id: 'wb-hero',
+          type: 'hero',
+          title: 'Hero Workshop',
+          subtitle: '',
+          enabled: true,
+          data: {
+            headline: 'Fullstack & AI Engineering Masterclass 2026',
+            tagline: 'Pelatihan Praktis Intensif Membangun Aplikasi Skalabel Berbasis AI Agent',
+            dateText: 'Sabtu - Minggu, 14-15 November 2026 • 09.00 - 16.30 WIB',
+            locationText: 'Lab Komputasi Gedung Baru & Online Zoom Room',
+            bannerUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&auto=format&fit=crop&q=80',
+            buttons: [
+              { id: 'btn-1', enabled: true, label: 'Daftar Kelas Sekarang', targetType: 'block', targetBlockId: 'wb-form' }
+            ]
+          }
+        },
+        {
+          id: 'wb-timeline',
+          type: 'timeline',
+          title: 'Silabus & Materi Workshop',
+          subtitle: 'Jadwal pembelajaran kurikulum industri terstruktur selama dua hari',
+          enabled: true,
+          data: {
+            items: [
+              { id: 't-1', name: 'Hari 1: Modern Fullstack Architecture', description: 'State management, edge computing, dan clean backend REST/GraphQL.', startDate: '14 Nov 2026', endDate: '14 Nov 2026', order: 1, status: 'active' },
+              { id: 't-2', name: 'Hari 2: Autonomous AI Agents & Production', description: 'Implementasi model LLM, tool calling, vector database, dan deployment CI/CD.', startDate: '15 Nov 2026', endDate: '15 Nov 2026', order: 2, status: 'upcoming' }
+            ]
+          }
+        },
+        {
+          id: 'wb-form',
+          type: 'form',
+          title: 'Formulir Pendaftaran Peserta',
+          subtitle: 'Kuota terbatas hanya untuk 60 peserta terpilih',
+          enabled: true,
+          data: {
+            buttonText: 'Amankan Kursi Pelatihan',
+            openMode: 'same-page',
+            hideFromMainPage: false,
+            steps: [
+              {
+                id: 'step-1',
+                title: 'Alur 1',
+                fields: [
+                  { id: 'f-1', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama lengkap untuk e-sertifikat' },
+                  { id: 'f-2', label: 'Email Utama', type: 'text', required: true, placeholder: 'email@domain.com' },
+                  { id: 'f-3', label: 'Tingkat Kemampuan Koding', type: 'choice', required: true, options: ['Pemula (Dasar)', 'Menengah (Fullstack)', 'Mahir / Praktisi'] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+
+  // ─── 5. CAREER FAIR & EXPO ───────────────────────────────────────────────────
+  {
+    id: 'career-expo',
+    name: 'Campus Career Fair & Expo',
+    badge: 'Walk-in Interview',
+    category: 'Bursa Kerja & Karir',
+    description: 'Tata letak elegan bernuansa profesional untuk bursa lowongan kerja kampus, expo industri, dan rekrutmen magang nasional.',
+    previewGradient: 'from-[#7c3aed] via-[#8b5cf6] to-[#4c1d95]',
+    recommendedFor: 'Job Fair Kampus, Internship Expo, Info Session Perusahaan, Rekrutmen BUMN',
+    defaultConfig: {
+      eventName: 'National University Career & Internship Fair 2026',
+      tagline: 'Membuka Gerbang Karir Emas Bersama 50+ Perusahaan Multinasional Terkemuka',
+      description: 'Pusat rekrutmen karir dan magang terintegrasi menghubungkan mahasiswa tingkat akhir dan alumni muda dengan para perekrut industri.',
+      institutionName: 'Career Development Center (CDC)',
+      logoUrl: '',
+      bannerUrl: 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=1200&auto=format&fit=crop&q=80',
+      eventDateText: 'Rabu - Kamis, 02-03 Desember 2026 • 09.00 - 17.00 WIB',
+      eventLocationText: 'Exhibition Hall Kampus Pusat & Portal Online',
+      isOnline: false,
+      statusBadgeText: '',
+      theme: {
+        primaryColor: '#7c3aed',
+        accentColor: '#8b5cf6',
+        bgStyle: 'subtle-gradient',
+        fontFamily: 'sans'
+      },
+      blocks: [
+        {
+          id: 'ce-hero',
+          type: 'hero',
+          title: 'Hero Job Fair',
+          subtitle: '',
+          enabled: true,
+          data: {
+            headline: 'National University Career & Internship Fair 2026',
+            tagline: 'Membuka Gerbang Karir Emas Bersama 50+ Perusahaan Multinasional Terkemuka',
+            dateText: 'Rabu - Kamis, 02-03 Desember 2026 • 09.00 - 17.00 WIB',
+            locationText: 'Exhibition Hall Kampus Pusat & Portal Online',
+            bannerUrl: 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=1200&auto=format&fit=crop&q=80',
+            buttons: [
+              { id: 'btn-1', enabled: true, label: 'Klaim E-Pass Pengunjung', targetType: 'block', targetBlockId: 'ce-form' }
+            ]
+          }
+        },
+        {
+          id: 'ce-text',
+          type: 'text',
+          title: 'Petunjuk & Persiapan Berkas',
+          subtitle: 'Persyaratan wajib bagi pengunjung bursa karir',
+          enabled: true,
+          data: {
+            content: 'Peserta diharapkan membawa CV cetak atau tautan CV digital, mengenakan pakaian formal rapi, dan menyimpan QR Code tiket masuk yang diterbitkan sistem.'
+          }
+        },
+        {
+          id: 'ce-form',
+          type: 'form',
+          title: 'Formulir Tiket Masuk Pengunjung',
+          subtitle: 'Registrasi gratis bagi seluruh mahasiswa aktif dan fresh graduate',
+          enabled: true,
+          data: {
+            buttonText: 'Dapatkan QR Pass Masuk',
+            openMode: 'same-page',
+            hideFromMainPage: false,
+            steps: [
+              {
+                id: 'step-1',
+                title: 'Alur 1',
+                fields: [
+                  { id: 'f-1', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama sesuai identitas' },
+                  { id: 'f-2', label: 'Email Pengunjung', type: 'text', required: true, placeholder: 'email@alumni.ac.id' },
+                  { id: 'f-3', label: 'Bidang Karir Minat', type: 'choice', required: true, options: ['Teknologi & Engineering', 'Finance & Accounting', 'Marketing & Sales', 'Human Resources & General'] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+
+  // ─── 6. SOCIAL & CHARITY MOVEMENT ─────────────────────────────────────────────
+  {
+    id: 'charity-volunteer',
+    name: 'Social Movement & Volunteer Gathering',
+    badge: 'Aksi Nyata',
+    category: 'Sosial & Volunteer',
+    description: 'Format berjiwa sosial dan komunitas untuk penggalangan relawan muda, aksi lingkungan, ekspedisi mengajar, dan bakti sosial.',
+    previewGradient: 'from-[#ea580c] via-[#f97316] to-[#c2410c]',
+    recommendedFor: 'Open Recruitment Relawan, Ekspedisi Mengajar, Program Bakti Sosial, Gerakan Peduli Lingkungan',
+    defaultConfig: {
+      eventName: 'Ekspedisi Relawan Mengajar Nusantara 2026',
+      tagline: 'Langkah Nyata Pemuda Memajukan Pendidikan dan Literasi Anak Bangsa',
+      description: 'Gerakan pengabdian masyarakat mengajak generasi muda untuk terjun langsung membimbing adik-adik di daerah pelosok.',
+      institutionName: 'Komunitas Peduli Literasi & BEM Universitas',
+      logoUrl: '',
+      bannerUrl: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200&auto=format&fit=crop&q=80',
+      eventDateText: 'Pendaftaran Relawan: 10 - 25 Desember 2026',
+      eventLocationText: 'Pemberangkatan: Wilayah Indonesia Timur',
+      isOnline: false,
+      statusBadgeText: '',
+      theme: {
+        primaryColor: '#ea580c',
+        accentColor: '#f97316',
+        bgStyle: 'clean-white',
+        fontFamily: 'sans'
+      },
+      blocks: [
+        {
+          id: 'cv-hero',
+          type: 'hero',
+          title: 'Hero Relawan',
+          subtitle: '',
+          enabled: true,
+          data: {
+            headline: 'Ekspedisi Relawan Mengajar Nusantara 2026',
+            tagline: 'Langkah Nyata Pemuda Memajukan Pendidikan dan Literasi Anak Bangsa',
+            dateText: 'Pendaftaran Relawan: 10 - 25 Desember 2026',
+            locationText: 'Pemberangkatan: Wilayah Indonesia Timur',
+            bannerUrl: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200&auto=format&fit=crop&q=80',
+            buttons: [
+              { id: 'btn-1', enabled: true, label: 'Gabung Jadi Relawan', targetType: 'block', targetBlockId: 'cv-form' }
+            ]
+          }
+        },
+        {
+          id: 'cv-timeline',
+          type: 'timeline',
+          title: 'Alur Seleksi Relawan',
+          subtitle: 'Tahapan seleksi calon relawan sebelum masa pembekalan dan pemberangkatan',
+          enabled: true,
+          data: {
+            items: [
+              { id: 't-1', name: 'Pendaftaran Berkas', description: 'Pengisian form dan esai motivasi.', startDate: '10 Des 2026', endDate: '25 Des 2026', order: 1, status: 'active', isRegistrationStage: true },
+              { id: 't-2', name: 'Wawancara & FGD', description: 'Uji komitmen dan diskusi kelompok.', startDate: '28 Des 2026', endDate: '30 Des 2026', order: 2, status: 'upcoming' },
+              { id: 't-3', name: 'Pembekalan & Pelepasan', description: 'Pelatihan pedagogik dan kesiapan fisik.', startDate: '05 Jan 2027', endDate: '08 Jan 2027', order: 3, status: 'upcoming' }
+            ]
+          }
+        },
+        {
+          id: 'cv-form',
+          type: 'form',
+          title: 'Formulir Seleksi Relawan',
+          subtitle: 'Tunjukkan kepedulian dan aksi nyatamu untuk perubahan positif',
+          enabled: true,
+          data: {
+            buttonText: 'Kirim Formulir Relawan',
+            openMode: 'same-page',
+            hideFromMainPage: false,
+            steps: [
+              {
+                id: 'step-1',
+                title: 'Alur 1',
+                fields: [
+                  { id: 'f-1', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama lengkap' },
+                  { id: 'f-2', label: 'Nomor WhatsApp', type: 'text', required: true, placeholder: '08xxxxxxxxxx' },
+                  { id: 'f-3', label: 'Divisi Relawan Minat', type: 'choice', required: true, options: ['Divisi Pengajar Kreatif', 'Divisi Medis & P3K', 'Divisi Dokumentasi & Media', 'Divisi Logistik & Dapur'] }
                 ]
               }
             ]
@@ -670,6 +953,9 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
 ];
 
 export function getTemplateById(id: string): TemplateDefinition {
+  if (id === 'blank') {
+    return BLANK_TEMPLATE;
+  }
   const found = SPARK_TEMPLATES.find((t) => t.id === id);
   return found || SPARK_TEMPLATES[0];
 }

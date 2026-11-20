@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Logo from './Logo.tsx';
+import { SPARK_TEMPLATES, type TemplateDefinition } from '../types/builder.ts';
+import RealtimeWorkspaceThumbnail from './spark/RealtimeWorkspaceThumbnail.tsx';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -112,11 +114,12 @@ export default function AdminDashboard({
   onBackToSite,
   onSettingsUpdated
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'workspaces' | 'overview' | 'leads' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'workspaces' | 'templates' | 'overview' | 'leads' | 'settings'>('users');
   const [stats, setStats] = useState<AdminStatsData | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [workspaces, setWorkspaces] = useState<AdminWorkspace[]>([]);
   const [leads, setLeads] = useState<ConsultationItem[]>([]);
+  const [templatesList, setTemplatesList] = useState<TemplateDefinition[]>(SPARK_TEMPLATES);
   const [loading, setLoading] = useState(true);
 
   // User Detail View State
@@ -138,6 +141,8 @@ export default function AdminDashboard({
   const [filterWsStatus, setFilterWsStatus] = useState<string>('all');
   const [searchLead, setSearchLead] = useState('');
   const [filterLeadStatus, setFilterLeadStatus] = useState<string>('all');
+  const [searchTemplate, setSearchTemplate] = useState('');
+  const [filterTemplateCategory, setFilterTemplateCategory] = useState<string>('all');
 
   // Site Settings state
   const [settings, setSettings] = useState<SiteSettings>({
@@ -157,8 +162,27 @@ export default function AdminDashboard({
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
   const [editingWs, setEditingWs] = useState<AdminWorkspace | null>(null);
   const [deletingWs, setDeletingWs] = useState<AdminWorkspace | null>(null);
+  const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState<TemplateDefinition | null>(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  // Create Template Form State
+  const [templateForm, setTemplateForm] = useState({
+    id: '',
+    name: '',
+    category: 'Seminar & Konferensi',
+    badge: 'Paling Populer',
+    description: '',
+    primaryColor: '#1f2de6',
+    accentColor: '#3b47dc',
+    headline: '',
+    tagline: '',
+    dateText: '',
+    locationText: '',
+    bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80'
+  });
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -171,12 +195,13 @@ export default function AdminDashboard({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [resStats, resUsers, resWorkspaces, resLeads, resSettings] = await Promise.all([
+      const [resStats, resUsers, resWorkspaces, resLeads, resSettings, resTemplates] = await Promise.all([
         fetch('/api/admin/stats').then((r) => r.json()),
         fetch('/api/admin/users').then((r) => r.json()),
         fetch('/api/admin/workspaces').then((r) => r.json()),
         fetch('/api/consultations').then((r) => r.json()),
-        fetch('/api/settings').then((r) => r.json())
+        fetch('/api/settings').then((r) => r.json()),
+        fetch('/api/templates').then((r) => r.json()).catch(() => [])
       ]);
 
       if (resStats && !resStats.error) setStats(resStats);
@@ -185,6 +210,9 @@ export default function AdminDashboard({
       if (Array.isArray(resLeads)) setLeads(resLeads);
       if (resSettings && typeof resSettings === 'object') {
         setSettings((prev) => ({ ...prev, ...resSettings }));
+      }
+      if (Array.isArray(resTemplates) && resTemplates.length > 0) {
+        setTemplatesList(resTemplates);
       }
     } catch {
       showToast('Gagal memuat data administrasi.');
@@ -196,6 +224,123 @@ export default function AdminDashboard({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // ─── Template Management Handlers ──────────────────────────────────────────
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!templateForm.name.trim()) {
+      setModalError('Nama template wajib diisi.');
+      return;
+    }
+    setIsSavingTemplate(true);
+    setModalError('');
+    try {
+      const cleanId = (templateForm.id.trim() || templateForm.name.trim())
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+
+      const defaultConfig = {
+        eventName: templateForm.headline.trim() || templateForm.name.trim(),
+        tagline: templateForm.tagline.trim(),
+        description: templateForm.description.trim(),
+        institutionName: 'Panitia Pelaksana',
+        bannerUrl: templateForm.bannerUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
+        eventDateText: templateForm.dateText || 'Segera Diumumkan',
+        eventLocationText: templateForm.locationText || 'Kampus / Gedung Acara',
+        isOnline: false,
+        theme: {
+          primaryColor: templateForm.primaryColor,
+          accentColor: templateForm.accentColor,
+          bgStyle: 'clean-white',
+          fontFamily: 'sans'
+        },
+        blocks: [
+          {
+            id: `${cleanId}-hero`,
+            type: 'hero',
+            title: 'Hero Banner',
+            enabled: true,
+            data: {
+              headline: templateForm.headline.trim() || templateForm.name.trim(),
+              tagline: templateForm.tagline.trim(),
+              dateText: templateForm.dateText || '',
+              locationText: templateForm.locationText || '',
+              bannerUrl: templateForm.bannerUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
+              buttons: [{ id: 'btn-1', enabled: true, label: 'Daftar Sekarang', targetType: 'block', targetBlockId: `${cleanId}-form` }]
+            }
+          },
+          {
+            id: `${cleanId}-form`,
+            type: 'form',
+            title: 'Formulir Registrasi Peserta',
+            enabled: true,
+            data: {
+              buttonText: 'Kirim Pendaftaran',
+              openMode: 'same-page',
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Alur 1',
+                  fields: [
+                    { id: 'f-1', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Nama lengkap' },
+                    { id: 'f-2', label: 'Email Aktif', type: 'text', required: true, placeholder: 'nama@domain.com' },
+                    { id: 'f-3', label: 'Nomor WhatsApp', type: 'text', required: true, placeholder: '08xxxxxxxxxx' }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      };
+
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cleanId,
+          name: templateForm.name.trim(),
+          category: templateForm.category,
+          badge: templateForm.badge,
+          description: templateForm.description,
+          defaultConfig
+        })
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || 'Gagal menyimpan template');
+      }
+
+      showToast('Template berhasil dibuat!');
+      setIsCreateTemplateModalOpen(false);
+
+      // Refresh templates
+      const refRes = await fetch('/api/templates');
+      const refData = await refRes.json();
+      if (Array.isArray(refData) && refData.length > 0) setTemplatesList(refData);
+    } catch (err: any) {
+      setModalError(err.message || 'Terjadi kesalahan');
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (tmpl: TemplateDefinition) => {
+    try {
+      const res = await fetch(`/api/templates/${tmpl.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Gagal menghapus template');
+      showToast('Template berhasil dihapus.');
+      setDeletingTemplate(null);
+      const refRes = await fetch('/api/templates');
+      const refData = await refRes.json();
+      if (Array.isArray(refData)) setTemplatesList(refData);
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghapus template.');
+    }
+  };
 
   // ─── Open User Detail View ────────────────────────────────────────────────
 
@@ -573,7 +718,29 @@ export default function AdminDashboard({
                   </span>
                 </button>
 
-                {/* 3. Ringkasan */}
+                {/* 3. Kelola Template */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('templates');
+                    setSelectedUserDetail(null);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'templates'
+                      ? 'bg-[#edf2ff] text-[#1f2de6] font-bold'
+                      : 'text-[#585d6b] hover:text-[#0b0c0e] hover:bg-[#f8f9fb]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[18px]">dashboard_customize</span>
+                    <span>Kelola Template</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b]">
+                    {templatesList.length}
+                  </span>
+                </button>
+
+                {/* 4. Ringkasan */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1338,6 +1505,183 @@ export default function AdminDashboard({
               )}
 
               {/* ─────────────────────────────────────────────────────────────
+                  TAB: MANAJEMEN TEMPLATE WEBSITE EVENT
+                  ───────────────────────────────────────────────────────────── */}
+              {activeTab === 'templates' && (
+                <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
+                  {/* Header Title & CTA Button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="font-heading text-2xl font-extrabold text-[#0b0c0e] tracking-tight">
+                        Manajemen Template Website Event
+                      </h1>
+                      <p className="text-xs text-[#585d6b] mt-0.5">
+                        Kelola katalog template siap pakai yang tampil di dashboard panitia. Tambah template baru langsung ke sistem.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemplateForm({
+                          id: '',
+                          name: '',
+                          category: 'Seminar & Konferensi',
+                          badge: 'Paling Populer',
+                          description: '',
+                          primaryColor: '#1f2de6',
+                          accentColor: '#3b47dc',
+                          headline: '',
+                          tagline: '',
+                          dateText: '',
+                          locationText: '',
+                          bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80'
+                        });
+                        setModalError('');
+                        setIsCreateTemplateModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                      <span>+ Tambah Template Baru</span>
+                    </button>
+                  </div>
+
+                  {/* Filter & Search Bar */}
+                  <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex-1 relative">
+                      <span className="material-symbols-outlined absolute left-3 top-2.5 text-[#8c93a0] text-[18px]">
+                        search
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Cari nama template atau kategori..."
+                        value={searchTemplate}
+                        onChange={(e) => setSearchTemplate(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] placeholder-[#8c93a0] focus:outline-none focus:border-[#1f2de6]"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={filterTemplateCategory}
+                        onChange={(e) => setFilterTemplateCategory(e.target.value)}
+                        className="px-3 py-2 rounded-lg border border-[#e2e5ea] bg-white text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                      >
+                        <option value="all">Semua Kategori</option>
+                        <option value="Seminar & Konferensi">Seminar & Konferensi</option>
+                        <option value="Kompetisi Mahasiswa">Kompetisi Mahasiswa</option>
+                        <option value="Dies Natalis & Pentas Seni">Festival & Seni</option>
+                        <option value="Workshop & Pelatihan">Workshop & Pelatihan</option>
+                        <option value="Bursa Kerja & Karir">Bursa Kerja & Karir</option>
+                        <option value="Sosial & Volunteer">Sosial & Volunteer</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Templates Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {templatesList
+                      .filter((t) => {
+                        if (searchTemplate) {
+                          const query = searchTemplate.toLowerCase();
+                          if (!t.name.toLowerCase().includes(query) && !t.category.toLowerCase().includes(query)) {
+                            return false;
+                          }
+                        }
+                        if (filterTemplateCategory !== 'all' && t.category !== filterTemplateCategory) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((tmpl) => {
+                        const mockWorkspace = {
+                          id: `preview-${tmpl.id}`,
+                          owner_id: 'admin',
+                          name: tmpl.defaultConfig?.eventName || tmpl.name,
+                          slug: tmpl.id,
+                          service_type: 'spark' as const,
+                          template_id: tmpl.id,
+                          status: 'draft' as const,
+                          draft_config: JSON.stringify(tmpl.defaultConfig || {}),
+                          published_config: null,
+                          created_at: '',
+                          updated_at: ''
+                        };
+
+                        return (
+                          <div
+                            key={tmpl.id}
+                            className="flex flex-col rounded-xl border border-[#e2e5ea] bg-white hover:border-[#1f2de6] hover:shadow-md transition-all p-3.5 space-y-3"
+                          >
+                            {/* Browser Mockup Box */}
+                            <div className="relative h-[160px] w-full rounded-lg overflow-hidden bg-[#f8f9fb] border border-[#e2e5ea] flex flex-col">
+                              {/* Top Bar */}
+                              <div className="h-5 bg-[#f4f5f8] border-b border-[#e2e5ea] px-2 flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-[#cbd5e1]" />
+                                </div>
+                                <span className="text-[9px] font-mono text-[#8c93a0] truncate max-w-[120px]">
+                                  {tmpl.id}
+                                </span>
+                              </div>
+
+                              {/* Preview */}
+                              <div className="flex-1 w-full relative overflow-hidden bg-white">
+                                <RealtimeWorkspaceThumbnail
+                                  workspace={mockWorkspace}
+                                  height={140}
+                                  className="w-full h-full border-none"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Template Info */}
+                            <div className="space-y-1.5 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#edf2ff] text-[#1f2de6] truncate">
+                                  {tmpl.category}
+                                </span>
+                                {tmpl.badge && (
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#f4f5f8] border border-[#e2e5ea] text-[#585d6b] truncate">
+                                    {tmpl.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-heading text-sm font-bold text-[#0b0c0e] truncate">
+                                {tmpl.name}
+                              </h3>
+                              {tmpl.description && (
+                                <p className="text-xs text-[#585d6b] line-clamp-2 leading-relaxed">
+                                  {tmpl.description}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="pt-2 border-t border-[#e2e5ea] flex items-center justify-between">
+                              <span className="text-[10px] font-mono text-[#8c93a0]">
+                                ID: {tmpl.id}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingTemplate(tmpl)}
+                                className="p-1 rounded text-[#8c93a0] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                title="Hapus Template"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* ─────────────────────────────────────────────────────────────
                   TAB 3: RINGKASAN METRIK NYATA
                   ───────────────────────────────────────────────────────────── */}
               {activeTab === 'overview' && (
@@ -1802,6 +2146,230 @@ export default function AdminDashboard({
                 className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold cursor-pointer"
               >
                 {isSubmitting ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: TAMBAH TEMPLATE BARU ────────────────────────────────────── */}
+      {isCreateTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-[#e2e5ea] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e2e5ea]">
+              <div>
+                <h3 className="font-heading text-base font-bold text-[#0b0c0e]">Tambah Template Baru</h3>
+                <p className="text-xs text-[#585d6b]">Buat template siap pakai baru untuk seluruh pengguna Iventra.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateTemplateModalOpen(false)}
+                className="w-7 h-7 rounded-lg text-[#8c93a0] hover:text-[#0b0c0e] hover:bg-[#f4f5f8] flex items-center justify-center text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#0b0c0e]">
+                  Nama Template <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: International Medical Conference 2026"
+                  value={templateForm.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      name,
+                      headline: prev.headline || name,
+                      id: prev.id || name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-')
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Kategori Event</label>
+                  <select
+                    value={templateForm.category}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] bg-white focus:outline-none focus:border-[#1f2de6]"
+                  >
+                    <option value="Seminar & Konferensi">Seminar & Konferensi</option>
+                    <option value="Kompetisi Mahasiswa">Kompetisi Mahasiswa</option>
+                    <option value="Dies Natalis & Pentas Seni">Festival & Seni</option>
+                    <option value="Workshop & Pelatihan">Workshop & Pelatihan</option>
+                    <option value="Bursa Kerja & Karir">Bursa Kerja & Karir</option>
+                    <option value="Sosial & Volunteer">Sosial & Volunteer</option>
+                    <option value="Umum & Mandiri">Umum & Mandiri</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Badge Label</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Paling Populer / Lab"
+                    value={templateForm.badge}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, badge: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Warna Utama (Primary)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={templateForm.primaryColor}
+                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, primaryColor: e.target.value }))}
+                      className="w-8 h-8 rounded border border-[#e2e5ea] cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={templateForm.primaryColor}
+                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, primaryColor: e.target.value }))}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-[#e2e5ea] text-xs font-mono text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Warna Aksen</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={templateForm.accentColor}
+                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, accentColor: e.target.value }))}
+                      className="w-8 h-8 rounded border border-[#e2e5ea] cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={templateForm.accentColor}
+                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, accentColor: e.target.value }))}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-[#e2e5ea] text-xs font-mono text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#0b0c0e]">Headline Acara</label>
+                <input
+                  type="text"
+                  placeholder="Judul utama hero section"
+                  value={templateForm.headline}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, headline: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#0b0c0e]">Tagline Acara</label>
+                <input
+                  type="text"
+                  placeholder="Slogan atau subjudul acara"
+                  value={templateForm.tagline}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, tagline: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Jadwal Pelaksanaan</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Sabtu, 28 Nov 2026"
+                    value={templateForm.dateText}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, dateText: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#0b0c0e]">Lokasi / Tempat</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Gedung Rektorat / Zoom"
+                    value={templateForm.locationText}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, locationText: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#0b0c0e]">Deskripsi Singkat</label>
+                <textarea
+                  rows={2}
+                  placeholder="Penjelasan ringkas perihal format acara..."
+                  value={templateForm.description}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-[#e2e5ea] text-xs text-[#0b0c0e] focus:outline-none focus:border-[#1f2de6] resize-none"
+                />
+              </div>
+
+              {modalError && <p className="text-xs font-mono text-red-600">{modalError}</p>}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#e2e5ea]">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTemplateModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded-lg border border-[#e2e5ea] text-xs font-mono text-[#585d6b] hover:bg-[#f4f5f8]"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTemplate}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingTemplate ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Template</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: HAPUS TEMPLATE ──────────────────────────────────────────── */}
+      {deletingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-[#e2e5ea] p-6 space-y-4">
+            <h3 className="font-heading text-base font-bold text-red-600">Hapus Template?</h3>
+            <p className="text-xs text-[#585d6b] leading-relaxed">
+              Anda yakin ingin menghapus template <strong>{deletingTemplate.name}</strong> ({deletingTemplate.id})? Template tidak akan lagi muncul di katalog panitia.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingTemplate(null)}
+                className="px-3.5 py-1.5 rounded-lg border border-[#e2e5ea] text-xs font-mono"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteTemplate(deletingTemplate)}
+                className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold cursor-pointer"
+              >
+                Ya, Hapus
               </button>
             </div>
           </div>
