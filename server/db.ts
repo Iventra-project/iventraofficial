@@ -84,18 +84,37 @@ export function initDb() {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS workspace_submissions (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted',
+      payment_proof_url TEXT,
+      payment_email TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
   `);
 
   // Create indexes for performance
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_submissions_ws ON workspace_submissions(workspace_id);'); } catch {}
 
   // Migrate workspaces table if columns do not exist
   try { db.exec('ALTER TABLE workspaces ADD COLUMN template_id TEXT DEFAULT "tech-summit";'); } catch {}
   try { db.exec('ALTER TABLE workspaces ADD COLUMN draft_config TEXT DEFAULT "";'); } catch {}
   try { db.exec('ALTER TABLE workspaces ADD COLUMN published_config TEXT DEFAULT "";'); } catch {}
   try { db.exec('ALTER TABLE workspaces ADD COLUMN published_at TEXT DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN visitors_count INTEGER DEFAULT 0;'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN form_started_count INTEGER DEFAULT 0;'); } catch {}
+  try { db.exec('ALTER TABLE workspaces ADD COLUMN submitted_count INTEGER DEFAULT 0;'); } catch {}
+
+  // Migrate users table for plan and role
+  try { db.exec('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "spark";'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN role TEXT DEFAULT "user";'); } catch {}
 
   // Migrate projects table if columns do not exist
   try { db.exec('ALTER TABLE projects ADD COLUMN institutionName TEXT DEFAULT "";'); } catch {}
@@ -488,6 +507,8 @@ export interface UserRow {
   email: string;
   password_hash: string;
   name: string;
+  plan?: string; // 'spark' (Free, limit 500) | 'spark_pro' (Pro, limit 5000)
+  role?: string; // 'user' | 'admin'
   created_at: string;
   updated_at: string;
 }
@@ -500,12 +521,14 @@ export function getUserById(id: string): UserRow | null {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | null;
 }
 
-export function createUser(user: { id: string; email: string; password_hash: string; name: string }): UserRow {
+export function createUser(user: { id: string; email: string; password_hash: string; name: string; plan?: string; role?: string }): UserRow {
   const now = new Date().toISOString();
+  const plan = user.plan || 'spark';
+  const role = user.role || 'user';
   db.prepare(`
-    INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), now, now);
+    INSERT INTO users (id, email, password_hash, name, plan, role, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), plan, role, now, now);
   return getUserById(user.id)!;
 }
 
@@ -567,6 +590,223 @@ export function updateUserPassword(id: string, password_hash: string): boolean {
 }
 
 // ─────────────────────────────────────────────
+// ADMIN DATA ACCESS HELPERS
+// ─────────────────────────────────────────────
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  plan: 'spark' | 'spark_pro' | string;
+  role: 'user' | 'admin' | string;
+  created_at: string;
+  updated_at: string;
+  workspaces_count: number;
+  total_traffic: number;
+  traffic_limit: number;
+  traffic_percent: number;
+  submissions_count: number;
+}
+
+export interface AdminWorkspaceItem extends WorkspaceRow {
+  owner_name: string;
+  owner_email: string;
+  owner_plan: string;
+  submissions_count: number;
+}
+
+export function getAdminStats() {
+  const totalUsers = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any)?.c || 0;
+  const proUsers = (db.prepare("SELECT COUNT(*) as c FROM users WHERE plan = 'spark_pro'").get() as any)?.c || 0;
+  const freeUsers = totalUsers - proUsers;
+  const totalWorkspaces = (db.prepare('SELECT COUNT(*) as c FROM workspaces').get() as any)?.c || 0;
+  const publishedWorkspaces = (db.prepare("SELECT COUNT(*) as c FROM workspaces WHERE status = 'published'").get() as any)?.c || 0;
+  const totalTraffic = (db.prepare('SELECT COALESCE(SUM(visitors_count), 0) as s FROM workspaces').get() as any)?.s || 0;
+  const totalSubmissions = (db.prepare('SELECT COUNT(*) as c FROM workspace_submissions').get() as any)?.c || 0;
+  const totalLeads = (db.prepare('SELECT COUNT(*) as c FROM consultations').get() as any)?.c || 0;
+
+  return {
+    totalUsers,
+    proUsers,
+    freeUsers,
+    totalWorkspaces,
+    publishedWorkspaces,
+    totalTraffic,
+    totalSubmissions,
+    totalLeads
+  };
+}
+
+export function getAllUsersWithTraffic(): AdminUserItem[] {
+  const rows = db.prepare(`
+    SELECT 
+      u.id, 
+      u.email, 
+      u.name, 
+      COALESCE(u.plan, 'spark') as plan, 
+      COALESCE(u.role, 'user') as role, 
+      u.created_at, 
+      u.updated_at,
+      COUNT(DISTINCT w.id) as workspaces_count,
+      COALESCE(SUM(w.visitors_count), 0) as total_traffic,
+      COUNT(DISTINCT s.id) as submissions_count
+    FROM users u
+    LEFT JOIN workspaces w ON w.owner_id = u.id
+    LEFT JOIN workspace_submissions s ON s.workspace_id = w.id
+    GROUP BY u.id
+    ORDER BY u.created_at DESC
+  `).all() as any[];
+
+  return rows.map((r) => {
+    const isPro = r.plan === 'spark_pro';
+    const limit = isPro ? 5000 : 500;
+    const traffic = Number(r.total_traffic || 0);
+    const percent = Math.min(100, Math.round((traffic / limit) * 100));
+
+    return {
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      plan: r.plan,
+      role: r.role,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      workspaces_count: Number(r.workspaces_count || 0),
+      total_traffic: traffic,
+      traffic_limit: limit,
+      traffic_percent: percent,
+      submissions_count: Number(r.submissions_count || 0)
+    };
+  });
+}
+
+export function getAdminUserDetail(id: string) {
+  const user = getUserById(id);
+  if (!user) return null;
+
+  const isPro = user.plan === 'spark_pro';
+  const limit = isPro ? 5000 : 500;
+
+  const workspaces = db.prepare(`
+    SELECT 
+      w.*,
+      (SELECT COUNT(*) FROM workspace_submissions WHERE workspace_id = w.id) as submissions_count
+    FROM workspaces w
+    WHERE w.owner_id = ?
+    ORDER BY w.updated_at DESC
+  `).all(id) as any[];
+
+  const totalTraffic = workspaces.reduce((acc, ws) => acc + (Number(ws.visitors_count) || 0), 0);
+  const totalSubmissions = workspaces.reduce((acc, ws) => acc + (Number(ws.submissions_count) || 0), 0);
+  const percent = Math.min(100, Math.round((totalTraffic / limit) * 100));
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    plan: user.plan || 'spark',
+    role: user.role || 'user',
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+    traffic_limit: limit,
+    total_traffic: totalTraffic,
+    traffic_percent: percent,
+    total_submissions: totalSubmissions,
+    workspaces_count: workspaces.length,
+    workspaces: workspaces.map((w) => ({
+      ...w,
+      visitors_count: Number(w.visitors_count || 0),
+      submissions_count: Number(w.submissions_count || 0)
+    }))
+  };
+}
+
+export function adminCreateUser(data: { name: string; email: string; password_hash: string; plan?: string; role?: string }): UserRow {
+  const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  return createUser({
+    id,
+    name: data.name,
+    email: data.email,
+    password_hash: data.password_hash,
+    plan: data.plan || 'spark',
+    role: data.role || 'user'
+  });
+}
+
+export function adminUpdateUser(id: string, updates: { name?: string; email?: string; plan?: string; role?: string; password_hash?: string }): UserRow | null {
+  const now = new Date().toISOString();
+  const user = getUserById(id);
+  if (!user) return null;
+
+  const name = updates.name?.trim() ?? user.name;
+  const email = updates.email?.toLowerCase().trim() ?? user.email;
+  const plan = updates.plan ?? user.plan ?? 'spark';
+  const role = updates.role ?? user.role ?? 'user';
+
+  if (updates.password_hash) {
+    db.prepare('UPDATE users SET name = ?, email = ?, plan = ?, role = ?, password_hash = ?, updated_at = ? WHERE id = ?')
+      .run(name, email, plan, role, updates.password_hash, now, id);
+  } else {
+    db.prepare('UPDATE users SET name = ?, email = ?, plan = ?, role = ?, updated_at = ? WHERE id = ?')
+      .run(name, email, plan, role, now, id);
+  }
+
+  return getUserById(id);
+}
+
+export function adminDeleteUser(id: string): boolean {
+  // Cascades to workspaces and submissions
+  const res = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  return res.changes > 0;
+}
+
+export function getAllWorkspacesForAdmin(): AdminWorkspaceItem[] {
+  const rows = db.prepare(`
+    SELECT 
+      w.*,
+      COALESCE(u.name, 'Unknown') as owner_name,
+      COALESCE(u.email, '-') as owner_email,
+      COALESCE(u.plan, 'spark') as owner_plan,
+      (SELECT COUNT(*) FROM workspace_submissions WHERE workspace_id = w.id) as submissions_count
+    FROM workspaces w
+    LEFT JOIN users u ON w.owner_id = u.id
+    ORDER BY w.updated_at DESC
+  `).all() as any[];
+
+  return rows.map((r) => ({
+    ...r,
+    submissions_count: Number(r.submissions_count || 0),
+    visitors_count: Number(r.visitors_count || 0),
+    form_started_count: Number(r.form_started_count || 0),
+    submitted_count: Number(r.submitted_count || 0)
+  }));
+}
+
+export function adminUpdateWorkspace(id: string, updates: { name?: string; slug?: string; status?: string; service_type?: string; visitors_count?: number }): WorkspaceRow | null {
+  const now = new Date().toISOString();
+  const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | null;
+  if (!ws) return null;
+
+  const name = updates.name?.trim() ?? ws.name;
+  const slug = updates.slug?.trim() ? cleanSlug(updates.slug) : ws.slug;
+  const status = updates.status ?? ws.status;
+  const service_type = updates.service_type ?? ws.service_type;
+  const visitors_count = updates.visitors_count !== undefined ? updates.visitors_count : ws.visitors_count;
+
+  db.prepare(`
+    UPDATE workspaces SET name = ?, slug = ?, status = ?, service_type = ?, visitors_count = ?, updated_at = ?
+    WHERE id = ?
+  `).run(name, slug, status, service_type, visitors_count, now, id);
+
+  return db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | null;
+}
+
+export function adminDeleteWorkspace(id: string): boolean {
+  const res = db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
+  return res.changes > 0;
+}
+
+// ─────────────────────────────────────────────
 // WORKSPACE data access helpers
 // ─────────────────────────────────────────────
 
@@ -582,8 +822,21 @@ export interface WorkspaceRow {
   draft_config?: string;
   published_config?: string;
   published_at?: string | null;
+  visitors_count?: number;
+  form_started_count?: number;
+  submitted_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WorkspaceSubmissionRow {
+  id: string;
+  workspace_id: string;
+  data: string;
+  status: 'submitted' | 'verified' | 'rejected' | string;
+  payment_proof_url?: string | null;
+  payment_email?: string | null;
+  created_at: string;
 }
 
 export function getWorkspacesByOwner(owner_id: string): WorkspaceRow[] {
@@ -595,11 +848,11 @@ export function getWorkspaceById(id: string, owner_id: string): WorkspaceRow | n
 }
 
 export function getWorkspaceBySlug(slug: string): WorkspaceRow | null {
-  return db.prepare('SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?)').get(slug) as WorkspaceRow | null;
+  return db.prepare('SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?) OR id = ?').get(slug, slug) as WorkspaceRow | null;
 }
 
 export function getPublishedWorkspaceBySlug(slug: string): WorkspaceRow | null {
-  return db.prepare('SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?) AND status = "published"').get(slug) as WorkspaceRow | null;
+  return db.prepare("SELECT * FROM workspaces WHERE LOWER(slug) = LOWER(?) AND status = 'published'").get(slug) as WorkspaceRow | null;
 }
 
 export function createWorkspace(ws: {
@@ -715,6 +968,78 @@ export function unpublishWorkspace(id: string, owner_id: string): { success: boo
 export function deleteWorkspace(id: string, owner_id: string): boolean {
   const result = db.prepare('DELETE FROM workspaces WHERE id = ? AND owner_id = ?').run(id, owner_id);
   return result.changes > 0;
+}
+
+export function incrementWorkspaceStat(workspaceId: string, statType: 'visitors' | 'form_started' | 'submitted'): void {
+  const column = statType === 'visitors' ? 'visitors_count' : statType === 'form_started' ? 'form_started_count' : 'submitted_count';
+  try {
+    db.prepare(`UPDATE workspaces SET ${column} = COALESCE(${column}, 0) + 1 WHERE id = ?`).run(workspaceId);
+  } catch (err) {
+    console.error('Failed to increment workspace stat:', err);
+  }
+}
+
+export function getWorkspaceStats(workspaceId: string): { visitors: number; form_started: number; submitted: number } {
+  try {
+    const row = db.prepare('SELECT visitors_count, form_started_count, submitted_count FROM workspaces WHERE id = ?').get(workspaceId) as any;
+    return {
+      visitors: row?.visitors_count || 0,
+      form_started: row?.form_started_count || 0,
+      submitted: row?.submitted_count || 0,
+    };
+  } catch (err) {
+    return { visitors: 0, form_started: 0, submitted: 0 };
+  }
+}
+
+export function getWorkspaceSubmissions(workspaceId: string): WorkspaceSubmissionRow[] {
+  try {
+    return db.prepare('SELECT * FROM workspace_submissions WHERE workspace_id = ? ORDER BY created_at DESC').all(workspaceId) as WorkspaceSubmissionRow[];
+  } catch (err) {
+    console.error('Failed to get workspace submissions:', err);
+    return [];
+  }
+}
+
+export function createWorkspaceSubmission(params: {
+  id?: string;
+  workspace_id: string;
+  data: Record<string, any>;
+  status?: string;
+  payment_proof_url?: string;
+  payment_email?: string;
+}): WorkspaceSubmissionRow {
+  const id = params.id || `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const dataStr = typeof params.data === 'string' ? params.data : JSON.stringify(params.data);
+  const status = params.status || 'submitted';
+
+  db.prepare(`
+    INSERT INTO workspace_submissions (id, workspace_id, data, status, payment_proof_url, payment_email, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, params.workspace_id, dataStr, status, params.payment_proof_url || null, params.payment_email || null, now);
+
+  incrementWorkspaceStat(params.workspace_id, 'submitted');
+
+  return db.prepare('SELECT * FROM workspace_submissions WHERE id = ?').get(id) as WorkspaceSubmissionRow;
+}
+
+export function updateWorkspaceSubmissionStatus(submissionId: string, status: string): boolean {
+  try {
+    const res = db.prepare('UPDATE workspace_submissions SET status = ? WHERE id = ?').run(status, submissionId);
+    return res.changes > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function deleteWorkspaceSubmission(submissionId: string): boolean {
+  try {
+    const res = db.prepare('DELETE FROM workspace_submissions WHERE id = ?').run(submissionId);
+    return res.changes > 0;
+  } catch {
+    return false;
+  }
 }
 
 export function cleanSlug(text: string): string {

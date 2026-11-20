@@ -9,7 +9,13 @@ import {
   saveWorkspaceBuilderConfig,
   publishWorkspace,
   unpublishWorkspace,
-  getWorkspaceBySlug
+  getWorkspaceBySlug,
+  getWorkspaceStats,
+  getWorkspaceSubmissions,
+  updateWorkspaceSubmissionStatus,
+  deleteWorkspaceSubmission,
+  createWorkspaceSubmission,
+  incrementWorkspaceStat
 } from './db.ts';
 import { requireAuth } from './auth.ts';
 
@@ -64,7 +70,7 @@ router.post('/', (req: Request, res: Response) => {
       name: name.trim(),
       service_type: service_type || 'spark',
       description: description?.trim() || undefined,
-      template_id: template_id || 'tech-summit',
+      template_id: template_id || 'blank',
       slug: slug?.trim() || undefined,
       draft_config: typeof draft_config === 'string' ? draft_config : (draft_config ? JSON.stringify(draft_config) : '')
     });
@@ -88,6 +94,148 @@ router.get('/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[workspaces/detail]', error);
     return res.status(500).json({ error: 'Gagal memuat workspace.' });
+  }
+});
+
+// ─── GET /api/workspaces/:id/dashboard ─────────────────────────────────────────
+// Get workspace statistics & form submissions
+router.get('/:id/dashboard', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceById(req.params.id, req.user!.userId);
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+
+    const stats = getWorkspaceStats(ws.id);
+    const submissions = getWorkspaceSubmissions(ws.id);
+
+    return res.json({
+      workspace: ws,
+      stats,
+      submissions: submissions.map(sub => {
+        let parsedData = {};
+        try {
+          parsedData = JSON.parse(sub.data);
+        } catch {
+          parsedData = { raw: sub.data };
+        }
+        return {
+          ...sub,
+          parsedData
+        };
+      })
+    });
+  } catch (error: any) {
+    console.error('[workspaces/dashboard]', error);
+    return res.status(500).json({ error: 'Gagal memuat data dashboard workspace.' });
+  }
+});
+
+// ─── PATCH /api/workspaces/:id/submissions/:subId ──────────────────────────────
+// Update verification status (e.g. 'verified', 'rejected', 'submitted')
+router.patch('/:id/submissions/:subId', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceById(req.params.id, req.user!.userId);
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+
+    const { status } = req.body;
+    if (!status || !['submitted', 'verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status tidak valid.' });
+    }
+
+    const updated = updateWorkspaceSubmissionStatus(req.params.subId, status);
+    if (!updated) {
+      return res.status(404).json({ error: 'Data formulir tidak ditemukan.' });
+    }
+
+    return res.json({ success: true, status });
+  } catch (error: any) {
+    console.error('[workspaces/submissions/patch]', error);
+    return res.status(500).json({ error: 'Gagal memperbarui status.' });
+  }
+});
+
+// ─── DELETE /api/workspaces/:id/submissions/:subId ────────────────────────────
+// Delete submission
+router.delete('/:id/submissions/:subId', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceById(req.params.id, req.user!.userId);
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+
+    const deleted = deleteWorkspaceSubmission(req.params.subId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Data formulir tidak ditemukan.' });
+    }
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('[workspaces/submissions/delete]', error);
+    return res.status(500).json({ error: 'Gagal menghapus data formulir.' });
+  }
+});
+
+// ─── POST /api/workspaces/:id/submissions/seed-demo ────────────────────────────
+// Seed simulation submission data for demonstration
+router.post('/:id/submissions/seed-demo', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceById(req.params.id, req.user!.userId);
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+
+    const samples = [
+      {
+        'Nama Lengkap': 'Aditya Pratama',
+        'Email': 'aditya.p@gmail.com',
+        'Nomor WhatsApp': '081234567890',
+        'Nama Tim': 'Tim Garuda Cyber',
+        'Kategori': 'Mahasiswa',
+        'Institusi': 'Universitas Indonesia'
+      },
+      {
+        'Nama Lengkap': 'Siti Rahmawati',
+        'Email': 'siti.rahma@campus.ac.id',
+        'Nomor WhatsApp': '085712345678',
+        'Nama Tim': 'Inovasi Muda',
+        'Kategori': 'Pelajar SMA/SMK',
+        'Institusi': 'SMK Negeri 1 Surabaya'
+      },
+      {
+        'Nama Lengkap': 'Budi Santoso',
+        'Email': 'budi.santoso@techmail.id',
+        'Nomor WhatsApp': '082198765432',
+        'Nama Tim': 'Solo Project',
+        'Kategori': 'Umum / Profesional',
+        'Institusi': 'PT Teknologi Maju'
+      }
+    ];
+
+    for (const sample of samples) {
+      createWorkspaceSubmission({
+        workspace_id: ws.id,
+        data: sample,
+        status: 'submitted',
+        payment_email: sample['Email'],
+        payment_proof_url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'
+      });
+    }
+
+    incrementWorkspaceStat(ws.id, 'visitors');
+    incrementWorkspaceStat(ws.id, 'visitors');
+    incrementWorkspaceStat(ws.id, 'visitors');
+    incrementWorkspaceStat(ws.id, 'visitors');
+    incrementWorkspaceStat(ws.id, 'visitors');
+    incrementWorkspaceStat(ws.id, 'form_started');
+    incrementWorkspaceStat(ws.id, 'form_started');
+
+    return res.json({ success: true, message: 'Data simulasi berhasil ditambahkan.' });
+  } catch (error: any) {
+    console.error('[workspaces/seed-demo]', error);
+    return res.status(500).json({ error: 'Gagal menambahkan simulasi.' });
   }
 });
 

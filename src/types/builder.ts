@@ -40,9 +40,19 @@ export interface FormFieldItem {
   options?: string[]; // for choice (pilihan ganda)
 }
 
+export interface FormPaymentConfig {
+  enabled: boolean;
+  price?: string;
+  qrCodeUrl?: string;
+  bankInfo?: string;
+  verificationEmailRequired?: boolean;
+}
+
 export interface FormStep {
   id: string;
   title: string;
+  type?: 'standard' | 'payment';
+  payment?: FormPaymentConfig;
   fields: FormFieldItem[];
 }
 
@@ -127,7 +137,8 @@ export interface EventConfig {
   theme: {
     primaryColor: string;
     accentColor: string;
-    bgStyle: 'clean-white' | 'subtle-gradient' | 'dark-modern' | 'campus-emerald';
+    bgStyle: 'clean-white' | 'subtle-gradient' | 'dark-modern' | 'campus-emerald' | 'custom';
+    bgColor?: string;
     fontFamily: 'sans' | 'display' | 'mono';
   };
 
@@ -193,7 +204,10 @@ export interface TemplateDefinition {
 }
 
 export function ensureConfigBlocks(config: EventConfig): EventBlock[] {
-  if (config.blocks && Array.isArray(config.blocks) && config.blocks.length > 0) {
+  if (Array.isArray(config.blocks)) {
+    if (config.blocks.length === 0) {
+      return [];
+    }
     // Normalization for blocks with steps
     return config.blocks.map((block) => {
       if (block.type === 'form') {
@@ -420,30 +434,7 @@ export const SPARK_TEMPLATES: TemplateDefinition[] = [
         bgStyle: 'clean-white',
         fontFamily: 'sans'
       },
-      blocks: [
-        {
-          id: 'block-b1',
-          type: 'form',
-          title: 'Formulir Pendaftaran',
-          subtitle: 'Silakan isi data berikut untuk mendaftar',
-          enabled: true,
-          data: {
-            buttonText: 'Kirim Pendaftaran',
-            openMode: 'same-page',
-            hideFromMainPage: false,
-            steps: [
-              {
-                id: 'step-1',
-                title: 'Alur 1',
-                fields: [
-                  { id: 'f-1', label: 'Nama Lengkap', type: 'text', required: true, placeholder: 'Masukkan nama lengkap Anda' },
-                  { id: 'f-2', label: 'Email', type: 'text', required: true, placeholder: 'nama@email.com' }
-                ]
-              }
-            ]
-          }
-        }
-      ]
+      blocks: []
     }
   },
 

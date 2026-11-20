@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import {
   getAllProjects,
   getProjectById,
@@ -14,7 +15,19 @@ import {
   getSiteSettings,
   updateSiteSettings,
   getWorkspaceBySlug,
-  getPublishedWorkspaceBySlug
+  getPublishedWorkspaceBySlug,
+  incrementWorkspaceStat,
+  createWorkspaceSubmission,
+  getAdminStats,
+  getAllUsersWithTraffic,
+  getAdminUserDetail,
+  adminCreateUser,
+  adminUpdateUser,
+  adminDeleteUser,
+  getAllWorkspacesForAdmin,
+  adminUpdateWorkspace,
+  adminDeleteWorkspace,
+  getUserByEmail
 } from './db.ts';
 import authRouter from './auth.ts';
 import workspacesRouter from './workspaces.ts';
@@ -84,6 +97,11 @@ apiApp.get('/api/public/events/:slug', (req: Request, res: Response) => {
       configObj = JSON.parse(ws.published_config);
     } catch {}
 
+    // Track public visitor count
+    try {
+      incrementWorkspaceStat(ws.id, 'visitors');
+    } catch {}
+
     return res.json({
       id: ws.id,
       name: ws.name,
@@ -101,7 +119,191 @@ apiApp.get('/api/public/events/:slug', (req: Request, res: Response) => {
   }
 });
 
-// ─── Overview stats (admin) ───────────────────────────────────────────────────
+// ─── POST /api/public/events/:slug/track-start ────────────────────────────────
+// Track when a visitor opens or starts filling the form
+apiApp.post('/api/public/events/:slug/track-start', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceBySlug(req.params.slug);
+    if (ws) {
+      incrementWorkspaceStat(ws.id, 'form_started');
+    }
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: false });
+  }
+});
+
+// ─── POST /api/public/events/:slug/submit ─────────────────────────────────────
+// Submit form response for an event
+apiApp.post('/api/public/events/:slug/submit', (req: Request, res: Response) => {
+  try {
+    const ws = getWorkspaceBySlug(req.params.slug);
+    if (!ws) {
+      return res.status(404).json({ error: 'Event tidak ditemukan.' });
+    }
+
+    const { formData, paymentProofUrl, paymentEmail } = req.body;
+
+    const submission = createWorkspaceSubmission({
+      workspace_id: ws.id,
+      data: formData || {},
+      status: 'submitted',
+      payment_proof_url: paymentProofUrl,
+      payment_email: paymentEmail
+    });
+
+    return res.status(201).json({
+      success: true,
+      submissionId: submission.id,
+      message: 'Pendaftaran berhasil dikirim!'
+    });
+  } catch (error: any) {
+    console.error('[public/submit]', error);
+    return res.status(500).json({ error: 'Gagal memproses pendaftaran.' });
+  }
+});
+
+// ─── ADMIN REAL CRUD & MONITORING ENDPOINTS ───────────────────────────────────
+
+// GET /api/admin/stats - Real aggregated metrics
+apiApp.get('/api/admin/stats', (_req: Request, res: Response) => {
+  try {
+    const stats = getAdminStats();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/users - Users with traffic tracking (500 vs 5000 limits)
+apiApp.get('/api/admin/users', (_req: Request, res: Response) => {
+  try {
+    const users = getAllUsersWithTraffic();
+    res.json(users);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/users/:id - User detailed profile with workspaces and traffic breakdown
+apiApp.get('/api/admin/users/:id', (req: Request, res: Response) => {
+  try {
+    const detail = getAdminUserDetail(req.params.id);
+    if (!detail) {
+      return res.status(404).json({ error: 'User tidak ditemukan.' });
+    }
+    res.json(detail);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/users - Create new user
+apiApp.post('/api/admin/users', async (req: Request, res: Response) => {
+  try {
+    const { name, email, password, plan, role } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nama, email, dan password wajib diisi.' });
+    }
+    const existing = getUserByEmail(email);
+    if (existing) {
+      return res.status(409).json({ error: 'Email sudah terdaftar.' });
+    }
+    const password_hash = await bcrypt.hash(password, 10);
+    const created = adminCreateUser({
+      name,
+      email,
+      password_hash,
+      plan: plan === 'spark_pro' ? 'spark_pro' : 'spark',
+      role: role === 'admin' ? 'admin' : 'user'
+    });
+    res.status(201).json(created);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/admin/users/:id - Update user
+apiApp.put('/api/admin/users/:id', async (req: Request, res: Response) => {
+  try {
+    const { name, email, plan, role, password } = req.body;
+    let password_hash: string | undefined = undefined;
+    if (password && password.trim().length >= 6) {
+      password_hash = await bcrypt.hash(password.trim(), 10);
+    }
+    const updated = adminUpdateUser(req.params.id, {
+      name,
+      email,
+      plan,
+      role,
+      password_hash
+    });
+    if (!updated) {
+      return res.status(404).json({ error: 'User tidak ditemukan.' });
+    }
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/admin/users/:id - Delete user
+apiApp.delete('/api/admin/users/:id', (req: Request, res: Response) => {
+  try {
+    const success = adminDeleteUser(req.params.id);
+    if (!success) {
+      return res.status(404).json({ error: 'User tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'User dan seluruh data terkait berhasil dihapus.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/workspaces - All workspaces across users
+apiApp.get('/api/admin/workspaces', (_req: Request, res: Response) => {
+  try {
+    const workspaces = getAllWorkspacesForAdmin();
+    res.json(workspaces);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/admin/workspaces/:id - Admin update workspace
+apiApp.put('/api/admin/workspaces/:id', (req: Request, res: Response) => {
+  try {
+    const { name, slug, status, service_type, visitors_count } = req.body;
+    const updated = adminUpdateWorkspace(req.params.id, {
+      name,
+      slug,
+      status,
+      service_type,
+      visitors_count: visitors_count !== undefined ? Number(visitors_count) : undefined
+    });
+    if (!updated) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/admin/workspaces/:id - Admin delete workspace
+apiApp.delete('/api/admin/workspaces/:id', (req: Request, res: Response) => {
+  try {
+    const success = adminDeleteWorkspace(req.params.id);
+    if (!success) {
+      return res.status(404).json({ error: 'Workspace tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Workspace berhasil dihapus.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Overview stats (admin legacy fallback) ───────────────────────────────────
 apiApp.get('/api/stats', (_req: Request, res: Response) => {
   try {
     const stats = getStats();
