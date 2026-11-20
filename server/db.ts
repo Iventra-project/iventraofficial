@@ -560,6 +560,12 @@ export function updateUserProfile(id: string, updates: { name?: string }): UserR
   return getUserById(id);
 }
 
+export function updateUserPassword(id: string, password_hash: string): boolean {
+  const now = new Date().toISOString();
+  const res = db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(password_hash, now, id);
+  return res.changes > 0;
+}
+
 // ─────────────────────────────────────────────
 // WORKSPACE data access helpers
 // ─────────────────────────────────────────────

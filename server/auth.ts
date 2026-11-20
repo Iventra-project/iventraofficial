@@ -470,4 +470,39 @@ router.put('/profile', requireAuth, (req: Request, res: Response) => {
   }
 });
 
+/**
+ * PUT /api/auth/password
+ * Header: Authorization: Bearer <token>
+ * Body: { currentPassword, newPassword }
+ */
+router.put('/password', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Password saat ini dan password baru wajib diisi.' });
+    }
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ error: 'Password baru minimal 8 karakter.' });
+    }
+
+    const user = getUserById(req.user!.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Akun tidak ditemukan.' });
+    }
+
+    const match = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!match) {
+      return res.status(400).json({ error: 'Password saat ini tidak sesuai.' });
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    updateUserPassword(req.user!.userId, password_hash);
+
+    return res.json({ success: true, message: 'Password berhasil diperbarui.' });
+  } catch (error: any) {
+    console.error('[auth/password]', error);
+    return res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
 export default router;

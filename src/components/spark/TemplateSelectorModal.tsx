@@ -1,5 +1,49 @@
 import { useState } from 'react';
 import { SPARK_TEMPLATES, type TemplateId, getTemplateById } from '../../types/builder.ts';
+import GalleryHoverCarousel, { type GalleryHoverCarouselItem } from '../../../components/ui/gallery-hover-carousel.tsx';
+
+const TEMPLATE_GALLERY_ITEMS: (GalleryHoverCarouselItem & { templateId: TemplateId })[] = [
+  {
+    id: 'academic',
+    templateId: 'tech-summit',
+    title: 'Academic & Tech Summit',
+    summary: 'Desain modern bernuansa tech indigo untuk konferensi ilmiah, seminar nasional, dan expo teknologi.',
+    url: '#',
+    image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop&q=80',
+    category: 'Seminar & Konferensi',
+    badge: 'Paling Populer',
+  },
+  {
+    id: 'competition',
+    templateId: 'campus-competition',
+    title: 'National Campus Competition',
+    summary: 'Format dinamis terfokus pada seleksi proposal, pengumpulan berkas, timeline bertingkat, dan penjurian online.',
+    url: '#',
+    image: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=800&auto=format&fit=crop&q=80',
+    category: 'Kompetisi Mahasiswa',
+    badge: 'Lomba & Hackathon',
+  },
+  {
+    id: 'creative',
+    templateId: 'creative-fest',
+    title: 'Creative & Art Campus Fest',
+    summary: 'Visual dinamis, penuh warna, dan energik cocok untuk festival musik kampus, pameran seni rupa, dan bazaar kreatif.',
+    url: '#',
+    image: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
+    category: 'Festival & Seni',
+    badge: 'Dies Natalis',
+  },
+  {
+    id: 'blank',
+    templateId: 'blank',
+    title: 'Blank Canvas (Kosongan)',
+    summary: 'Mulai formulir dari kanvas kosong tanpa blok bawaan. Fleksibel untuk kustomisasi bebas, RSVP, atau formulir pendaftaran khusus.',
+    url: '#',
+    image: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&auto=format&fit=crop&q=80',
+    category: 'Formulir Bebas',
+    badge: 'Mulai Dari Nol',
+  },
+];
 
 interface TemplateSelectorModalProps {
   isOpen: boolean;
@@ -75,7 +119,7 @@ export default function TemplateSelectorModal({
       />
 
       {/* Modal Card */}
-      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-6 bg-[#0b0c0e] text-white border-b border-white/10 flex items-center justify-between shrink-0">
           <div>
@@ -90,7 +134,7 @@ export default function TemplateSelectorModal({
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
               {step === 'template'
-                ? 'Pilih Blank Canvas (Kosongan) ala Google Form, atau gunakan template event siap pakai.'
+                ? 'Pilih struktur desain siap pakai yang dirancang untuk kebutuhan event kampus dan kompetisi.'
                 : 'Beri nama dan tentukan tautan slug untuk website event baru Anda.'}
             </p>
           </div>
@@ -105,75 +149,21 @@ export default function TemplateSelectorModal({
           </button>
         </div>
 
-        {/* STEP 1: TEMPLATE CARDS */}
+        {/* STEP 1: INTERACTIVE GALLERY HOVER CAROUSEL */}
         {step === 'template' && (
-          <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {SPARK_TEMPLATES.map((tmpl) => {
-                const isSelected = selectedTemplateId === tmpl.id;
-                const isBlank = tmpl.id === 'blank';
-
-                return (
-                  <div
-                    key={tmpl.id}
-                    onClick={() => handleTemplateSelect(tmpl.id)}
-                    className={`group rounded-xl border transition-all duration-200 p-4 flex flex-col justify-between cursor-pointer text-left relative overflow-hidden ${isSelected
-                      ? 'border-blue-600 bg-white shadow-md ring-2 ring-blue-600'
-                      : 'border-slate-200 hover:border-blue-400 bg-white hover:shadow-sm'
-                      }`}
-                  >
-                    <div>
-                      {/* Banner Preview */}
-                      <div className={`h-24 rounded-lg bg-gradient-to-tr ${tmpl.previewGradient} p-3 text-slate-900 flex flex-col justify-between shadow-2xs mb-3 relative overflow-hidden ${isBlank ? 'border-2 border-dashed border-slate-300' : ''
-                        }`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold uppercase tracking-wider bg-white/90 px-2 py-0.5 rounded shadow-2xs text-slate-900">
-                            {tmpl.category}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white px-2 py-0.5 rounded">
-                            {tmpl.badge}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {isBlank && (
-                            <span className="material-symbols-outlined text-[18px] text-blue-600">
-                              note_add
-                            </span>
-                          )}
-                          <span className="text-xs font-bold line-clamp-1 text-slate-900">
-                            {tmpl.name}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Info */}
-                      <h3 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition-colors tracking-tight">
-                        {tmpl.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-3">
-                        {tmpl.description}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTemplateSelect(tmpl.id);
-                        }}
-                        className={`w-full py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isBlank
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                          : 'bg-slate-900 hover:bg-blue-600 text-white'
-                          }`}
-                      >
-                        {isBlank ? 'Mulai Kosongan →' : 'Pilih Template →'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          <div className="p-6 overflow-y-auto flex-1 bg-white">
+            <GalleryHoverCarousel
+              heading="Katalog Template Siap Pakai"
+              subheading="Arahkan kursor pada kartu untuk pratinjau detail, lalu klik untuk mengonfigurasi website event."
+              items={TEMPLATE_GALLERY_ITEMS}
+              onSelectItem={(item) => {
+                const matched = TEMPLATE_GALLERY_ITEMS.find((t) => t.id === item.id);
+                if (matched) {
+                  handleTemplateSelect(matched.templateId);
+                }
+              }}
+              className="py-2"
+            />
           </div>
         )}
 
