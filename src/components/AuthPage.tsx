@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react';
 import Logo from './Logo.tsx';
 
 interface AuthPageProps {
   onAuthSuccess: (token: string, user: AuthUser) => void;
   onBackToSite: () => void;
+  oauthError?: string;
 }
 
 export interface AuthUser {
@@ -13,9 +15,9 @@ export interface AuthUser {
   createdAt: string;
 }
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'forgot';
 
-export default function AuthPage({ onAuthSuccess, onBackToSite }: AuthPageProps) {
+export default function AuthPage({ onAuthSuccess, onBackToSite, oauthError }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -23,23 +25,37 @@ export default function AuthPage({ onAuthSuccess, onBackToSite }: AuthPageProps)
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | null>(null);
+
+  useEffect(() => {
+    if (oauthError) setError(oauthError);
+  }, [oauthError]);
 
   const switchMode = (newMode: AuthMode) => {
     setMode(newMode);
     setError('');
-    setName('');
-    setEmail('');
+    setNotice('');
     setPassword('');
     setConfirmPassword('');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
+    setNotice('');
 
-    // Client-side validation (server also validates)
     if (!email.trim()) return setError('Email wajib diisi.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return setError('Masukkan alamat email yang valid.');
+    }
+
+    if (mode === 'forgot') {
+      setNotice('Layanan email pemulihan belum diaktifkan. Hubungi administrator Iventra untuk memulihkan akun.');
+      return;
+    }
+
     if (!password) return setError('Password wajib diisi.');
 
     if (mode === 'register') {
@@ -56,15 +72,15 @@ export default function AuthPage({ onAuthSuccess, onBackToSite }: AuthPageProps)
         ? { email: email.trim(), password }
         : { name: name.trim(), email: email.trim(), password };
 
-      const res = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         setError(data.error || 'Terjadi kesalahan. Coba lagi.');
         return;
       }
@@ -77,202 +93,230 @@ export default function AuthPage({ onAuthSuccess, onBackToSite }: AuthPageProps)
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f5f2ff] via-[#fcf8ff] to-[#f0f4ff] flex flex-col items-center justify-center px-4 py-12">
-      {/* Back to site */}
-      <div className="w-full max-w-sm mb-6">
-        <button
-          type="button"
-          onClick={onBackToSite}
-          className="inline-flex items-center gap-1.5 text-sm text-[#757589] hover:text-[#0c1df3] transition-colors cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          <span>Kembali ke Website</span>
-        </button>
-      </div>
+  const startOAuth = async (provider: 'google' | 'facebook') => {
+    setError('');
+    setOauthLoading(provider);
 
-      <div className="w-full max-w-sm">
-        {/* Logo + Brand */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Logo size="md" />
-            <span className="text-2xl font-extrabold text-[#000cb8] tracking-tight">Iventra</span>
+    try {
+      const response = await fetch(`/api/auth/oauth/${provider}/start`, { method: 'POST' });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || `Login dengan ${provider} belum tersedia.`);
+        return;
+      }
+
+      window.location.assign(data.url);
+    } catch {
+      setError('Gagal memulai login. Periksa koneksi ke server lalu coba lagi.');
+    } finally {
+      setOauthLoading(null);
+    }
+  };
+
+  const isRegister = mode === 'register';
+  const isForgot = mode === 'forgot';
+
+  return (
+    <main className="auth-screen">
+      <section className="auth-visual" aria-label="Tentang platform Iventra">
+        <button type="button" onClick={onBackToSite} className="auth-visual-back">
+          <ArrowLeft size={17} aria-hidden="true" />
+          Kembali ke website
+        </button>
+
+        <div className="auth-visual-content">
+          <h1>Manage Event,<br />Make Moments</h1>
+
+          <div className="auth-preview" aria-hidden="true">
+            <div className="auth-preview-top">
+              <span className="auth-preview-dot" />
+              <span className="auth-preview-dot" />
+              <span className="auth-preview-dot" />
+              <span className="auth-preview-label">EVENT DASHBOARD</span>
+            </div>
+            <div className="auth-preview-body">
+              <div className="auth-preview-mark">I</div>
+              <div className="auth-preview-copy">
+                <span className="auth-preview-eyebrow">EVENT BERIKUTNYA</span>
+                <strong>Semua persiapan, lebih terarah.</strong>
+                <span className="auth-preview-line" />
+                <span className="auth-preview-line auth-preview-line-short" />
+              </div>
+              <div className="auth-preview-check">✓</div>
+            </div>
           </div>
-          <p className="text-sm text-[#757589] text-center">
-            {mode === 'login' ? 'Masuk ke akun Iventra Anda' : 'Buat akun Iventra gratis'}
-          </p>
         </div>
 
-        {/* Auth Card */}
-        <div className="bg-white rounded-3xl shadow-[0_20px_60px_-10px_rgba(12,29,243,0.12)] border border-[#efecff] p-7 sm:p-8">
-          {/* Mode Tabs */}
-          <div className="flex rounded-2xl bg-[#f5f2ff] p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => switchMode('login')}
-              className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                mode === 'login'
-                  ? 'bg-white shadow-sm text-[#0c1df3]'
-                  : 'text-[#757589] hover:text-[#454557]'
-              }`}
-            >
-              Masuk
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('register')}
-              className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                mode === 'register'
-                  ? 'bg-white shadow-sm text-[#0c1df3]'
-                  : 'text-[#757589] hover:text-[#454557]'
-              }`}
-            >
-              Daftar
-            </button>
+        <span className="auth-visual-footer">IVENTRA · EVENT PLATFORM</span>
+      </section>
+
+      <section className="auth-main">
+        <button type="button" onClick={onBackToSite} className="auth-mobile-back">
+          <ArrowLeft size={17} aria-hidden="true" />
+          Kembali
+        </button>
+
+        <div className="auth-content">
+          <div className="auth-brand">
+            <Logo size="sm" />
+            <span>IVENTRA</span>
           </div>
 
-          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-            {/* Name field (register only) */}
-            {mode === 'register' && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="auth-name" className="text-xs font-bold text-[#454557] uppercase tracking-wide">
-                  Nama Lengkap
-                </label>
+          <header className="auth-heading">
+            <h2>{isForgot ? 'Lupa kata sandi?' : isRegister ? 'Buat akun Iventra' : 'Selamat datang kembali'}</h2>
+            <p>
+              {isForgot
+                ? 'Masukkan email akun Anda untuk memulai pemulihan.'
+                : isRegister
+                  ? 'Daftar untuk mulai mengelola event Anda.'
+                  : 'Masuk untuk melanjutkan ke dashboard Iventra.'}
+            </p>
+          </header>
+
+          {!isForgot && (
+            <div className="auth-social-section">
+              <div className="auth-social-buttons">
+                <button
+                  type="button"
+                  className="auth-social-button"
+                  onClick={() => startOAuth('google')}
+                  disabled={oauthLoading !== null}
+                >
+                  <img src="/assets/auth/google.svg" alt="" aria-hidden="true" />
+                  <span>{oauthLoading === 'google' ? 'Menghubungkan...' : 'Google'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="auth-social-button"
+                  onClick={() => startOAuth('facebook')}
+                  disabled={oauthLoading !== null}
+                >
+                  <img src="/assets/taste/icons/demo/facebook.svg" alt="" aria-hidden="true" />
+                  <span>{oauthLoading === 'facebook' ? 'Menghubungkan...' : 'Facebook'}</span>
+                </button>
+              </div>
+              <div className="auth-divider"><span>atau dengan email</span></div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate className="auth-form">
+            {isRegister && (
+              <div className="auth-field">
+                <label htmlFor="auth-name">Nama lengkap</label>
                 <input
                   id="auth-name"
                   type="text"
                   autoComplete="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(event) => setName(event.target.value)}
                   placeholder="Nama Anda"
-                  className="w-full px-4 py-3 rounded-xl border border-[#e2e1f4] bg-[#fafafa] text-sm text-[#191930] placeholder-[#b8b7cc] focus:outline-none focus:ring-2 focus:ring-[#0c1df3] focus:border-transparent transition"
                   required
                 />
               </div>
             )}
 
-            {/* Email */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="auth-email" className="text-xs font-bold text-[#454557] uppercase tracking-wide">
-                Email
-              </label>
-              <input
-                id="auth-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="email@contoh.com"
-                className="w-full px-4 py-3 rounded-xl border border-[#e2e1f4] bg-[#fafafa] text-sm text-[#191930] placeholder-[#b8b7cc] focus:outline-none focus:ring-2 focus:ring-[#0c1df3] focus:border-transparent transition"
-                required
-              />
-            </div>
-
-            {/* Password */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="auth-password" className="text-xs font-bold text-[#454557] uppercase tracking-wide">
-                Password
-              </label>
-              <div className="relative">
+            <div className="auth-field">
+              <label htmlFor="auth-email">Alamat email</label>
+              <div className="auth-input-wrap">
+                <Mail className="auth-input-icon" size={18} aria-hidden="true" />
                 <input
-                  id="auth-password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'Minimal 8 karakter' : '••••••••'}
-                  className="w-full px-4 py-3 pr-12 rounded-xl border border-[#e2e1f4] bg-[#fafafa] text-sm text-[#191930] placeholder-[#b8b7cc] focus:outline-none focus:ring-2 focus:ring-[#0c1df3] focus:border-transparent transition"
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="nama@email.com"
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b8b7cc] hover:text-[#454557] transition-colors cursor-pointer"
-                  aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-                >
-                  <span className="material-symbols-outlined text-[20px]">
-                    {showPassword ? 'visibility_off' : 'visibility'}
-                  </span>
-                </button>
               </div>
             </div>
 
-            {/* Confirm Password (register only) */}
-            {mode === 'register' && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="auth-confirm" className="text-xs font-bold text-[#454557] uppercase tracking-wide">
-                  Konfirmasi Password
-                </label>
-                <input
-                  id="auth-confirm"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Ulangi password"
-                  className="w-full px-4 py-3 rounded-xl border border-[#e2e1f4] bg-[#fafafa] text-sm text-[#191930] placeholder-[#b8b7cc] focus:outline-none focus:ring-2 focus:ring-[#0c1df3] focus:border-transparent transition"
-                  required
-                />
+            {!isForgot && (
+              <div className="auth-field">
+                <div className="auth-label-row">
+                  <label htmlFor="auth-password">Password</label>
+                  {!isRegister && (
+                    <button type="button" className="auth-text-button" onClick={() => switchMode('forgot')}>
+                      Lupa password?
+                    </button>
+                  )}
+                </div>
+                <div className="auth-input-wrap">
+                  <LockKeyhole className="auth-input-icon" size={18} aria-hidden="true" />
+                  <input
+                    id="auth-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete={isRegister ? 'new-password' : 'current-password'}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={isRegister ? 'Minimal 8 karakter' : 'Masukkan password'}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="auth-password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Error */}
-            {error && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-                <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">error</span>
-                <span>{error}</span>
+            {isRegister && (
+              <div className="auth-field">
+                <label htmlFor="auth-confirm">Konfirmasi password</label>
+                <div className="auth-input-wrap">
+                  <LockKeyhole className="auth-input-icon" size={18} aria-hidden="true" />
+                  <input
+                    id="auth-confirm"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Ulangi password"
+                    required
+                  />
+                </div>
               </div>
             )}
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 rounded-full bg-gradient-to-r from-[#0c1df3] to-[#3b47dc] text-white font-bold text-sm shadow-[0_8px_24px_-4px_rgba(12,29,243,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>{mode === 'login' ? 'Memproses...' : 'Mendaftarkan...'}</span>
-                </>
-              ) : (
-                <span>{mode === 'login' ? 'Masuk Dashboard' : 'Buat Akun'}</span>
-              )}
+            {error && <p className="auth-message auth-message-error" role="alert">{error}</p>}
+            {notice && <p className="auth-message auth-message-notice" role="status">{notice}</p>}
+
+            <button type="submit" className="auth-submit" disabled={isLoading}>
+              {isLoading ? 'Memproses...' : isForgot ? 'Kirim instruksi pemulihan' : isRegister ? 'Buat akun' : 'Masuk ke dashboard'}
+              {!isLoading && <ArrowRight size={18} aria-hidden="true" />}
             </button>
-
-            {/* Footer note */}
-            {mode === 'login' && (
-              <p className="text-center text-xs text-[#757589] mt-1">
-                Belum punya akun?{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  className="text-[#0c1df3] font-bold hover:underline cursor-pointer"
-                >
-                  Daftar gratis
-                </button>
-              </p>
-            )}
-            {mode === 'register' && (
-              <p className="text-center text-xs text-[#757589] mt-1">
-                Sudah punya akun?{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className="text-[#0c1df3] font-bold hover:underline cursor-pointer"
-                >
-                  Masuk
-                </button>
-              </p>
-            )}
           </form>
-        </div>
 
-        {/* Legal note */}
-        <p className="text-center text-[11px] text-[#b8b7cc] mt-5 leading-relaxed">
-          Dengan mendaftar, Anda menyetujui Syarat & Ketentuan dan Kebijakan Privasi Iventra.
-        </p>
-      </div>
-    </div>
+          <p className="auth-switch">
+            {isForgot ? (
+              <>
+                Ingat password Anda?{' '}
+                <button type="button" onClick={() => switchMode('login')}>Kembali masuk</button>
+              </>
+            ) : isRegister ? (
+              <>
+                Sudah punya akun?{' '}
+                <button type="button" onClick={() => switchMode('login')}>Masuk</button>
+              </>
+            ) : (
+              <>
+                Belum punya akun?{' '}
+                <button type="button" onClick={() => switchMode('register')}>Daftar sekarang</button>
+              </>
+            )}
+          </p>
+
+          <p className="auth-security">
+            <LockKeyhole size={14} aria-hidden="true" />
+            Akun Anda dilindungi dengan aman
+          </p>
+        </div>
+      </section>
+    </main>
   );
 }

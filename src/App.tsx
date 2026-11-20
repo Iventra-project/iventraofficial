@@ -47,7 +47,13 @@ function clearStoredAuth() {
 
 type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event';
 
-function parseHash(hash: string): { view: AppView; slug?: string; builderId?: string } {
+function parseHash(hash: string): {
+  view: AppView;
+  slug?: string;
+  builderId?: string;
+  oauthToken?: string;
+  oauthError?: string;
+} {
   if (hash.startsWith('#event/')) {
     const slug = hash.slice(7).split('?')[0];
     return { view: 'public-event', slug };
@@ -61,6 +67,15 @@ function parseHash(hash: string): { view: AppView; slug?: string; builderId?: st
   }
   if (hash === '#dashboard') {
     return { view: 'dashboard' };
+  }
+  if (hash.startsWith('#auth?')) {
+    const params = new URLSearchParams(hash.slice(6));
+    const oauthToken = params.get('oauth_token') || undefined;
+    return {
+      view: oauthToken ? 'dashboard' : 'auth',
+      oauthToken,
+      oauthError: params.get('oauth_error') || undefined
+    };
   }
   if (hash === '#auth') {
     return { view: 'auth' };
@@ -83,7 +98,10 @@ export default function App() {
 
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !!parseHash(window.location.hash).oauthToken;
+  });
 
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'spark' | 'flow' | 'bot' | null>('flow');
@@ -124,6 +142,8 @@ export default function App() {
   // ─── Auth: Restore session on mount ───────────────────────────────────────
 
   useEffect(() => {
+    if (parseHash(window.location.hash).oauthToken) return;
+
     const stored = loadStoredAuth();
     if (!stored) return;
 
@@ -160,6 +180,38 @@ export default function App() {
       })
       .catch(() => {
         clearStoredAuth();
+      })
+      .finally(() => {
+        setIsCheckingAuth(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const oauthToken = parseHash(window.location.hash).oauthToken;
+    if (!oauthToken) return;
+
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#auth`);
+    setIsCheckingAuth(true);
+
+    fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${oauthToken}` }
+    })
+      .then((response) => {
+        if (response.ok) return response.json();
+        throw new Error('OAuth session verification failed.');
+      })
+      .then((data) => {
+        setAuthToken(oauthToken);
+        setAuthUser(data.user);
+        saveStoredAuth(oauthToken, data.user);
+        window.location.hash = '#dashboard';
+        setView('dashboard');
+      })
+      .catch((error) => {
+        console.error('Could not verify the OAuth session:', error);
+        clearStoredAuth();
+        setView('auth');
+        window.location.hash = `#auth?oauth_error=${encodeURIComponent('Login sosial gagal diverifikasi. Silakan coba lagi.')}`;
       })
       .finally(() => {
         setIsCheckingAuth(false);
@@ -354,6 +406,7 @@ export default function App() {
         <AuthPage
           onAuthSuccess={handleAuthSuccess}
           onBackToSite={handleBackToSite}
+          oauthError={parseHash(window.location.hash).oauthError}
         />
       </div>
     );
@@ -393,20 +446,14 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
       <Navbar
-        onOpenTracker={() => {
-          setTrackerInitialId('IVN-2025-FTUI');
-          setIsTrackerOpen(true);
-        }}
         onOpenConsultation={() => handleOpenConsultation()}
-        onOpenProfile={() => setInfoModalType('profile')}
-        onOpenAdmin={handleOpenAdmin}
         onOpenDashboard={handleOpenDashboard}
         isLoggedIn={!!(authToken && authUser)}
         userName={authUser?.name}
       />
 
       <main className="w-full flex-1">
-        {/* Section 1 - Hero: Background Gambar 2 (hero-bg-grid.jpg) dengan Aceternity 3D Scroll Container */}
+        {/* Section 1 - Hero with Iventra background and event preview */}
         <Hero
           onOpenConsultation={() => handleOpenConsultation()}
           onSelectCampus={() => {}}
