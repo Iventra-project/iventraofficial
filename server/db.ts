@@ -1,17 +1,33 @@
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { randomUUID, timingSafeEqual } from 'crypto';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Database path in project root
-const DB_PATH = path.resolve(__dirname, '..', 'iventra.db');
+// Database path in project root or /tmp on Vercel serverless
+let DB_PATH = path.resolve(__dirname, '..', 'iventra.db');
+if (process.env.VERCEL) {
+  const tmpDbPath = '/tmp/iventra.db';
+  try {
+    if (!fs.existsSync(tmpDbPath) && fs.existsSync(DB_PATH)) {
+      fs.copyFileSync(DB_PATH, tmpDbPath);
+    }
+  } catch (err) {
+    console.warn('Failed copying sqlite to /tmp:', err);
+  }
+  DB_PATH = tmpDbPath;
+}
 
 export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+try {
+  db.pragma('journal_mode = WAL');
+} catch {
+  try { db.pragma('journal_mode = DELETE'); } catch {}
+}
 
 // Initialize schema
 export function initDb() {
