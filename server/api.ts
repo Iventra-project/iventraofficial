@@ -30,7 +30,8 @@ import {
   getUserByEmail,
   getAllTemplates,
   saveTemplate,
-  deleteTemplate
+  deleteTemplate,
+  upgradeUserPlan
 } from './db.ts';
 import authRouter from './auth.ts';
 import workspacesRouter from './workspaces.ts';
@@ -43,6 +44,18 @@ apiApp.use(express.json());
 // ─── Auth & Workspace routes ──────────────────────────────────────────────────
 apiApp.use('/api/auth', authRouter);
 apiApp.use('/api/workspaces', workspacesRouter);
+
+apiApp.post('/api/checkout/spark-pro', (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (email) {
+      upgradeUserPlan(email.trim().toLowerCase(), 'spark_pro');
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── Public Event Renderer API ────────────────────────────────────────────────
 // GET /api/public/events/:slug

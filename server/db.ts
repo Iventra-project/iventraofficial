@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -141,6 +142,13 @@ export function initDb() {
   // Migrate users table for plan and role
   try { db.exec('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "spark";'); } catch {}
   try { db.exec('ALTER TABLE users ADD COLUMN role TEXT DEFAULT "user";'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN age INTEGER DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN gender TEXT DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN onboarding_role TEXT DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN onboarding_purpose TEXT DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN onboarding_source TEXT DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE pending_email_verifications ADD COLUMN age INTEGER DEFAULT NULL;'); } catch {}
+  try { db.exec('ALTER TABLE pending_email_verifications ADD COLUMN gender TEXT DEFAULT NULL;'); } catch {}
 
   // Migrate projects table if columns do not exist
   try { db.exec('ALTER TABLE projects ADD COLUMN institutionName TEXT DEFAULT "";'); } catch {}
@@ -154,16 +162,42 @@ export function initDb() {
   // Initialize event templates if empty
   initTemplates();
 
-  // Check if projects table is empty, if so, seed demo data
-  const countRow = db.prepare('SELECT COUNT(*) as count FROM projects').get() as { count: number };
-  if (countRow.count === 0) {
-    seedDemoData();
+  // Ensure the permanent admin account is initialized
+  initPermanentAdmin();
+}
+
+export function initPermanentAdmin() {
+  const adminEmail = 'eventra.work@gmail.com';
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(adminEmail) as any;
+  if (!existing) {
+    const passwordHash = bcrypt.hashSync('fromsijatosija', 12);
+    db.prepare(`
+      INSERT INTO users (id, email, password_hash, name, plan, role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'usr_admin_eventra',
+      adminEmail,
+      passwordHash,
+      'Iventra Admin',
+      'spark_pro',
+      'admin',
+      new Date().toISOString(),
+      new Date().toISOString()
+    );
+  } else {
+    // Ensure role is admin and password is up to date
+    const passwordHash = bcrypt.hashSync('fromsijatosija', 12);
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?, role = 'admin', plan = 'spark_pro', updated_at = ?
+      WHERE email = ?
+    `).run(passwordHash, new Date().toISOString(), adminEmail);
   }
 }
 
 export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
-  sparkPrice: 'Rp 150rb - 300rb',
-  sparkPriceNote: '/ event',
+  sparkPrice: 'Rp 150.000',
+  sparkPriceNote: '/ bulan',
   flowPrice: 'Mulai Rp 500.000',
   flowPriceNote: '/ event',
   botPrice: 'Rp 70.000',
@@ -538,6 +572,8 @@ export interface UserRow {
   name: string;
   plan?: string; // 'spark' (Free, limit 500) | 'spark_pro' (Pro, limit 5000)
   role?: string; // 'user' | 'admin'
+  age?: number | null;
+  gender?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -550,14 +586,16 @@ export function getUserById(id: string): UserRow | null {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | null;
 }
 
-export function createUser(user: { id: string; email: string; password_hash: string; name: string; plan?: string; role?: string }): UserRow {
+export function createUser(user: { id: string; email: string; password_hash: string; name: string; plan?: string; role?: string; age?: number | null; gender?: string | null }): UserRow {
   const now = new Date().toISOString();
   const plan = user.plan || 'spark';
   const role = user.role || 'user';
+  const age = user.age !== undefined ? user.age : null;
+  const gender = user.gender !== undefined ? user.gender : null;
   db.prepare(`
-    INSERT INTO users (id, email, password_hash, name, plan, role, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), plan, role, now, now);
+    INSERT INTO users (id, email, password_hash, name, plan, role, age, gender, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(user.id, user.email.toLowerCase().trim(), user.password_hash, user.name.trim(), plan, role, age, gender, now, now);
   return getUserById(user.id)!;
 }
 
@@ -571,6 +609,8 @@ export interface PendingEmailVerification {
   sends_in_window: number;
   window_started_at: number;
   resend_after: number;
+  age?: number | null;
+  gender?: string | null;
   created_at: string;
 }
 
@@ -583,11 +623,13 @@ export function getPendingEmailVerification(email: string): PendingEmailVerifica
 export function savePendingEmailVerification(
   verification: Omit<PendingEmailVerification, 'created_at'> & { created_at?: string }
 ): void {
+  const age = verification.age !== undefined ? verification.age : null;
+  const gender = verification.gender !== undefined ? verification.gender : null;
   db.prepare(`
     INSERT INTO pending_email_verifications (
       email, name, password_hash, code_hash, expires_at, attempts,
-      sends_in_window, window_started_at, resend_after, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sends_in_window, window_started_at, resend_after, age, gender, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(email) DO UPDATE SET
       name = excluded.name,
       password_hash = excluded.password_hash,
@@ -597,6 +639,8 @@ export function savePendingEmailVerification(
       sends_in_window = excluded.sends_in_window,
       window_started_at = excluded.window_started_at,
       resend_after = excluded.resend_after,
+      age = excluded.age,
+      gender = excluded.gender,
       created_at = excluded.created_at
   `).run(
     verification.email.toLowerCase().trim(),
@@ -608,6 +652,8 @@ export function savePendingEmailVerification(
     verification.sends_in_window,
     verification.window_started_at,
     verification.resend_after,
+    age,
+    gender,
     verification.created_at ?? new Date().toISOString()
   );
 }
@@ -621,6 +667,46 @@ export function cleanupExpiredEmailVerificationWindows(now: number): void {
   db.prepare(
     'DELETE FROM pending_email_verifications WHERE window_started_at <= ?'
   ).run(now - 3600000);
+}
+
+export function updateUserOnboarding(
+  userId: string,
+  data: { role?: string; purpose?: string; source?: string; selectedPlan?: string }
+): void {
+  try {
+    db.prepare(`
+      UPDATE users
+      SET onboarding_role = COALESCE(?, onboarding_role),
+          onboarding_purpose = COALESCE(?, onboarding_purpose),
+          onboarding_source = COALESCE(?, onboarding_source),
+          plan = COALESCE(?, plan),
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      data.role || null,
+      data.purpose || null,
+      data.source || null,
+      data.selectedPlan || null,
+      new Date().toISOString(),
+      userId
+    );
+  } catch (error) {
+    console.error('Failed to update onboarding data:', error);
+  }
+}
+
+export function upgradeUserPlan(emailOrId: string, plan: string = 'spark_pro'): boolean {
+  try {
+    const info = db.prepare(`
+      UPDATE users
+      SET plan = ?, updated_at = ?
+      WHERE id = ? OR LOWER(email) = LOWER(?)
+    `).run(plan, new Date().toISOString(), emailOrId, emailOrId);
+    return info.changes > 0;
+  } catch (err) {
+    console.error('Failed to upgrade user plan:', err);
+    return false;
+  }
 }
 
 export function verifyPendingEmailAndCreateUser(
@@ -663,7 +749,9 @@ export function verifyPendingEmailAndCreateUser(
       id: randomUUID(),
       email: normalizedEmail,
       password_hash: pending.password_hash,
-      name: pending.name
+      name: pending.name,
+      age: pending.age ?? null,
+      gender: pending.gender ?? null
     });
     deletePendingEmailVerification(normalizedEmail);
     return { status: 'verified' as const, user };
@@ -785,6 +873,11 @@ export function getAllUsersWithTraffic(): AdminUserItem[] {
       u.name, 
       COALESCE(u.plan, 'spark') as plan, 
       COALESCE(u.role, 'user') as role, 
+      u.age,
+      u.gender,
+      u.onboarding_role,
+      u.onboarding_purpose,
+      u.onboarding_source,
       u.created_at, 
       u.updated_at,
       COUNT(DISTINCT w.id) as workspaces_count,
@@ -809,6 +902,11 @@ export function getAllUsersWithTraffic(): AdminUserItem[] {
       name: r.name,
       plan: r.plan,
       role: r.role,
+      age: r.age,
+      gender: r.gender,
+      onboarding_role: r.onboarding_role,
+      onboarding_purpose: r.onboarding_purpose,
+      onboarding_source: r.onboarding_source,
       created_at: r.created_at,
       updated_at: r.updated_at,
       workspaces_count: Number(r.workspaces_count || 0),
@@ -846,6 +944,11 @@ export function getAdminUserDetail(id: string) {
     email: user.email,
     plan: user.plan || 'spark',
     role: user.role || 'user',
+    age: (user as any).age,
+    gender: (user as any).gender,
+    onboarding_role: (user as any).onboarding_role,
+    onboarding_purpose: (user as any).onboarding_purpose,
+    onboarding_source: (user as any).onboarding_source,
     created_at: user.created_at,
     updated_at: user.updated_at,
     traffic_limit: limit,

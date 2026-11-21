@@ -126,48 +126,7 @@ export interface PaymentNotification {
   status: string;
 }
 
-export const INCOMING_PAYMENTS: PaymentNotification[] = [
-  {
-    id: 'pay-1',
-    name: 'Budi Prasetyo (Team Alpha)',
-    event: 'Hackathon Nusantara 2025',
-    amount: 'Rp 250.000',
-    time: '4 mnt lalu',
-    status: 'Lunas',
-  },
-  {
-    id: 'pay-2',
-    name: 'Rizky Alamsyah',
-    event: 'Webinar UI/UX Masterclass',
-    amount: 'Rp 75.000',
-    time: '18 mnt lalu',
-    status: 'Lunas',
-  },
-  {
-    id: 'pay-3',
-    name: 'Dina Kusuma (Inovasi Muda)',
-    event: 'Hackathon Nusantara 2025',
-    amount: 'Rp 250.000',
-    time: '42 mnt lalu',
-    status: 'Lunas',
-  },
-  {
-    id: 'pay-4',
-    name: 'Ahmad Fauzi',
-    event: 'Tech Conference Asia 2026',
-    amount: 'Rp 450.000',
-    time: '1 jam lalu',
-    status: 'Lunas',
-  },
-  {
-    id: 'pay-5',
-    name: 'Nadhira Salsabila',
-    event: 'Webinar UI/UX Masterclass',
-    amount: 'Rp 75.000',
-    time: '2 jam lalu',
-    status: 'Lunas',
-  },
-];
+export const INCOMING_PAYMENTS: PaymentNotification[] = [];
 
 export interface EventNotification {
   id: string;
@@ -181,76 +140,10 @@ export interface EventNotification {
   icon: string;
 }
 
-export const DEFAULT_NOTIFICATIONS: EventNotification[] = [
-  {
-    id: 'notif-1',
-    category: 'registration',
-    title: 'Pendaftaran Peserta Baru',
-    message: 'Tim "Garuda Innovate" telah mendaftar pada kompetisi Web Design & UI/UX Challenge (Kategori Mahasiswa).',
-    timestamp: '10 menit yang lalu',
-    read: false,
-    linkNav: 'workspaces',
-    linkLabel: 'Buka Workspace',
-    icon: 'how_to_reg'
-  },
-  {
-    id: 'notif-2',
-    category: 'payment',
-    title: 'Pembayaran Tiket Terverifikasi',
-    message: 'Pembayaran tiket Early Bird Rp 150.000 atas nama Muhammad Rizky telah berhasil diverifikasi via Payment Gateway.',
-    timestamp: '45 menit yang lalu',
-    read: false,
-    linkNav: 'workspaces',
-    linkLabel: 'Lihat Detail Peserta',
-    icon: 'payments'
-  },
-  {
-    id: 'notif-3',
-    category: 'quota',
-    title: 'Peringatan Kuota Tiket Menipis',
-    message: 'Slot pendaftaran seminar "AI & Future Technology" tersisa 12 tiket lagi (88% terisi). Segera tinjau alokasi kuota.',
-    timestamp: '2 jam yang lalu',
-    read: false,
-    linkNav: 'workspaces',
-    linkLabel: 'Kelola Kuota',
-    icon: 'warning'
-  },
-  {
-    id: 'notif-4',
-    category: 'submission',
-    title: 'Submisi Berkas Karya Masuk',
-    message: 'Tim "Bina Nusantara Tech" telah mengunggah proposal final dan mockup desain (PDF 4.2 MB) pada sistem penjurian.',
-    timestamp: '4 jam yang lalu',
-    read: true,
-    linkNav: 'workspaces',
-    linkLabel: 'Periksa Berkas',
-    icon: 'upload_file'
-  },
-  {
-    id: 'notif-5',
-    category: 'broadcast',
-    title: 'WhatsApp Gateway Blast Berhasil',
-    message: 'Sebanyak 142 tiket QR dan instruksi teknis babak penyisihan sukses dikirimkan ke nomor WhatsApp peserta.',
-    timestamp: 'Kemarin, 16:30',
-    read: true,
-    icon: 'send'
-  },
-  {
-    id: 'notif-6',
-    category: 'system',
-    title: 'Fitur Spark Builder v2.4 Aktif',
-    message: 'Formulir registrasi multi-tahap dan custom domain SSL gratis kini dapat langsung dikonfigurasi di setiap workspace.',
-    timestamp: '2 hari yang lalu',
-    read: true,
-    linkNav: 'subscription',
-    linkLabel: 'Cek Fitur Spark',
-    icon: 'auto_awesome'
-  }
-];
+export const DEFAULT_NOTIFICATIONS: EventNotification[] = [];
 
-export function getWorkspaceVisitorCount(ws: Workspace, index: number): string {
-  const visitors = [3480, 1920, 850, 4200, 680];
-  return (visitors[index % visitors.length]).toLocaleString('id-ID');
+export function getWorkspaceVisitorCount(ws: Workspace, _index: number): string {
+  return (ws.visitors_count || 0).toLocaleString('id-ID');
 }
 
 export default function UserDashboard({
@@ -301,41 +194,25 @@ export default function UserDashboard({
     const saved = localStorage.getItem('iventra_subscription');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && !parsed.invoices?.some((i: any) => i.id?.includes('INV-202611-0941'))) {
+          return parsed;
+        }
       } catch { }
     }
-    const pDate = new Date();
-    pDate.setDate(pDate.getDate() - 9); // default purchased 9 days ago
-    const eDate = new Date(pDate);
-    eDate.setDate(eDate.getDate() + 30); // 30 days active
-
+    const isPro = (user as any)?.plan === 'spark_pro';
     return {
-      planName: 'Spark Pro Workspace',
-      priceFormatted: 'Rp 150.000 / bulan',
-      billingCycle: 'Bulanan',
+      planName: isPro ? 'Spark Pro Workspace' : 'Spark Biasa',
+      priceFormatted: isPro ? 'Rp 150.000 / bulan' : 'Gratis',
+      billingCycle: isPro ? 'Bulanan' : 'Gratis',
       status: 'active',
-      purchasedAt: pDate.toISOString(),
-      expiresAt: eDate.toISOString(),
-      totalTokens: 10,
-      usedTokens: 8,
-      paymentMethod: 'QRIS Instant / Virtual Account',
-      autoRenew: true,
-      invoices: [
-        {
-          id: 'INV-202611-0941',
-          date: pDate.toISOString(),
-          planName: 'Spark Pro (30 Hari) + 10 Token Event',
-          amount: 'Rp 150.000',
-          status: 'Lunas'
-        },
-        {
-          id: 'INV-202610-0287',
-          date: new Date(pDate.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          planName: 'Spark Pro (30 Hari) + 10 Token Event',
-          amount: 'Rp 150.000',
-          status: 'Lunas'
-        }
-      ]
+      purchasedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      totalTokens: isPro ? 10 : 0,
+      usedTokens: 0,
+      paymentMethod: isPro ? 'QRIS Instant / Virtual Account' : '-',
+      autoRenew: false,
+      invoices: []
     };
   });
 
@@ -384,16 +261,21 @@ export default function UserDashboard({
 
   // Committee / Organization info
   const [organization, setOrganization] = useState(() => {
-    return localStorage.getItem('iventra_org_name') || 'SMK Telkom Sidoarjo';
+    const val = localStorage.getItem('iventra_org_name');
+    return val && val !== 'SMK Telkom Sidoarjo' ? val : '';
   });
   const [committeeRole, setCommitteeRole] = useState(() => {
-    return localStorage.getItem('iventra_committee_role') || 'Ketua Panitia / Project Lead';
+    const val = localStorage.getItem('iventra_committee_role');
+    if (val && val !== 'Ketua Panitia / Project Lead') return val;
+    return (user as any)?.onboarding_role || 'Panitia Event';
   });
   const [phone, setPhone] = useState(() => {
-    return localStorage.getItem('iventra_phone') || '+62 812-3456-7890';
+    const val = localStorage.getItem('iventra_phone');
+    return val && val !== '+62 812-3456-7890' ? val : '';
   });
   const [bio, setBio] = useState(() => {
-    return localStorage.getItem('iventra_bio') || 'Penanggung jawab operasional pendaftaran dan integrasi sistem tiket Iventra.';
+    const val = localStorage.getItem('iventra_bio');
+    return val && !val.includes('Penanggung jawab operasional') ? val : '';
   });
 
   // Password Change State
@@ -422,10 +304,13 @@ export default function UserDashboard({
     const saved = localStorage.getItem('iventra_event_notifications');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && !parsed.some((n: any) => n.id === 'notif-1' || n.title?.includes('Garuda Innovate'))) {
+          return parsed;
+        }
       } catch { }
     }
-    return DEFAULT_NOTIFICATIONS;
+    return [];
   });
 
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'registration' | 'payment' | 'system'>('all');
@@ -1016,9 +901,14 @@ export default function UserDashboard({
       return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
     });
 
-  const totalCount = Math.max(workspaces.length, 6);
-  const activeProjectsCount = 3;
-  const publishedCount = Math.max(workspaces.filter((w) => w.status === 'published').length, 2);
+  const totalCount = workspaces.length;
+  const sparkCount = workspaces.filter((w) => w.service_type !== 'expert').length;
+  const expertCount = workspaces.filter((w) => w.service_type === 'expert').length;
+  const activeProjectsCount = workspaces.length;
+  const publishedCount = workspaces.filter((w) => w.status === 'published').length;
+  const totalTraffic = workspaces.reduce((sum, w) => sum + (w.visitors_count || 0), 0);
+  const isProUser = (user as any)?.plan === 'spark_pro';
+  const trafficLimit = isProUser ? 5000 : 500;
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-[#0b0c0e] flex flex-col font-sans selection:bg-[#1f2de6] selection:text-white">
@@ -1255,7 +1145,7 @@ export default function UserDashboard({
                   <div className="mt-3 flex items-baseline gap-2">
                     <span className="font-heading text-3xl font-black text-[#0b0c0e]">{totalCount}</span>
                     <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                      +2 bln ini
+                      {totalCount > 0 ? `+${totalCount} aktif` : '0 aktif'}
                     </span>
                   </div>
                   <div className="w-full h-1 bg-[#1f2de6] rounded-full mt-3"></div>
@@ -1270,7 +1160,11 @@ export default function UserDashboard({
                   <div className="mt-3 flex items-baseline gap-2">
                     <span className="font-heading text-3xl font-black text-[#0b0c0e]">{activeProjectsCount}</span>
                     <span className="text-[11px] font-mono text-[#585d6b]">
-                      2 Spark <strong className="text-[#0b0c0e]">1 Expert</strong>
+                      {sparkCount > 0 || expertCount > 0 ? (
+                        `${sparkCount} Spark ${expertCount > 0 ? `${expertCount} Expert` : ''}`
+                      ) : (
+                        'Belum ada project'
+                      )}
                     </span>
                   </div>
                   <div className="w-full h-1 bg-[#0b0c0e] rounded-full mt-3"></div>
@@ -1285,8 +1179,8 @@ export default function UserDashboard({
                   <div className="mt-3 flex items-baseline gap-2">
                     <span className="font-heading text-3xl font-black text-[#0b0c0e]">{publishedCount}</span>
                     <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Live &amp; Accepting
+                      <span className={`w-1.5 h-1.5 rounded-full ${publishedCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                      {publishedCount > 0 ? 'Live & Accepting' : 'Belum Publikasi'}
                     </span>
                   </div>
                   <div className="w-full h-1 bg-emerald-500 rounded-full mt-3"></div>
@@ -1294,9 +1188,9 @@ export default function UserDashboard({
 
                 {/* 4. Total Limit Kunjungan Website */}
                 {(() => {
-                  const used = 192;
-                  const max = 1000;
-                  const percent = Math.min(100, Math.round((used / max) * 100));
+                  const used = totalTraffic;
+                  const max = trafficLimit;
+                  const percent = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
                   const isNearLimit = percent >= 80;
                   const isWarning = percent >= 65 && percent < 80;
 
@@ -1340,7 +1234,7 @@ export default function UserDashboard({
                       <div className="mt-3 flex items-baseline justify-between gap-1">
                         <div className="flex items-baseline gap-1">
                           <span className={`font-heading text-2xl font-black ${colorClass}`}>
-                            {used}
+                            {used.toLocaleString('id-ID')}
                           </span>
                           <span className="text-xs font-mono text-[#8c93a0]">
                             / {max.toLocaleString('id-ID')} Traffic
@@ -1376,7 +1270,7 @@ export default function UserDashboard({
                     </div>
 
                     <div className="flex items-center gap-2 text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className={`w-2 h-2 rounded-full ${totalTraffic > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
                       <span>Realtime Traffic</span>
                     </div>
                   </div>
@@ -1385,65 +1279,81 @@ export default function UserDashboard({
                   <div className="my-5 flex items-baseline justify-between">
                     <div>
                       <div className="flex items-baseline gap-2">
-                        <span className="font-heading text-3xl font-black text-[#0b0c0e]">24,850</span>
-                        <span className="text-xs font-mono text-emerald-700 font-bold">+28.4% minggu ini</span>
+                        <span className="font-heading text-3xl font-black text-[#0b0c0e]">
+                          {totalTraffic.toLocaleString('id-ID')}
+                        </span>
+                        <span className="text-xs font-mono text-emerald-700 font-bold">
+                          {totalTraffic > 0 ? '+0% minggu ini' : '0 kunjungan'}
+                        </span>
                       </div>
                       <span className="text-xs font-mono text-[#8c93a0]">Total kunjungan unik</span>
                     </div>
                     <div className="text-right text-xs font-mono text-[#585d6b]">
-                      Puncak: <strong className="text-[#0b0c0e]">Sabtu (5,420 kunjungan)</strong>
+                      {totalTraffic > 0 ? (
+                        <>Puncak: <strong className="text-[#0b0c0e]">Hari Ini ({totalTraffic} kunjungan)</strong></>
+                      ) : (
+                        <>Puncak: <strong className="text-[#0b0c0e]">- (0 kunjungan)</strong></>
+                      )}
                     </div>
                   </div>
 
-                  {/* Interactive SVG Area Chart */}
-                  <div className="w-full h-44 relative">
-                    <svg viewBox="0 0 700 150" className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="trafficGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1f2de6" stopOpacity="0.22" />
-                          <stop offset="100%" stopColor="#1f2de6" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Grid Lines */}
-                      <line x1="0" y1="35" x2="700" y2="35" stroke="#f1f3f7" strokeWidth="1" />
-                      <line x1="0" y1="75" x2="700" y2="75" stroke="#f1f3f7" strokeWidth="1" />
-                      <line x1="0" y1="115" x2="700" y2="115" stroke="#f1f3f7" strokeWidth="1" />
-
-                      {/* Area Fill */}
-                      <path
-                        d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40 L 680,145 L 20,145 Z"
-                        fill="url(#trafficGradient)"
-                      />
-
-                      {/* Smooth Trend Line */}
-                      <path
-                        d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40"
-                        fill="none"
-                        stroke="#1f2de6"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                      />
-
-                      {/* Key Data Points */}
-                      <circle cx="20" cy="115" r="3.5" fill="#1f2de6" />
-                      <circle cx="240" cy="90" r="3.5" fill="#1f2de6" />
-                      <circle cx="460" cy="65" r="3.5" fill="#1f2de6" />
-                      <circle cx="590" cy="25" r="4.5" fill="#ffffff" stroke="#1f2de6" strokeWidth="2.5" />
-                      <circle cx="680" cy="40" r="3.5" fill="#1f2de6" />
-                    </svg>
-
-                    {/* Day Labels */}
-                    <div className="flex justify-between text-[11px] font-mono text-[#8c93a0] mt-2 px-1">
-                      <span>Sen</span>
-                      <span>Sel</span>
-                      <span>Rab</span>
-                      <span>Kam</span>
-                      <span>Jum</span>
-                      <span className="font-bold text-[#1f2de6]">Sab</span>
-                      <span>Min</span>
+                  {/* Interactive SVG Area Chart / Empty State */}
+                  {totalTraffic === 0 ? (
+                    <div className="w-full h-44 flex flex-col items-center justify-center border border-dashed border-[#e2e5ea] rounded-xl bg-[#fafbfc] text-center p-4">
+                      <span className="material-symbols-outlined text-[32px] text-[#8c93a0] mb-1">show_chart</span>
+                      <p className="text-xs font-bold text-[#585d6b]">Belum Ada Aktivitas Trafik</p>
+                      <p className="text-[11px] text-[#8c93a0] mt-0.5 max-w-sm">Statistik kunjungan akan tampil otomatis setelah website Anda dipublikasikan.</p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="w-full h-44 relative">
+                      <svg viewBox="0 0 700 150" className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="trafficGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#1f2de6" stopOpacity="0.22" />
+                            <stop offset="100%" stopColor="#1f2de6" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* Grid Lines */}
+                        <line x1="0" y1="35" x2="700" y2="35" stroke="#f1f3f7" strokeWidth="1" />
+                        <line x1="0" y1="75" x2="700" y2="75" stroke="#f1f3f7" strokeWidth="1" />
+                        <line x1="0" y1="115" x2="700" y2="115" stroke="#f1f3f7" strokeWidth="1" />
+
+                        {/* Area Fill */}
+                        <path
+                          d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40 L 680,145 L 20,145 Z"
+                          fill="url(#trafficGradient)"
+                        />
+
+                        {/* Smooth Trend Line */}
+                        <path
+                          d="M 20,115 Q 130,105 240,90 T 460,65 T 590,25 T 680,40"
+                          fill="none"
+                          stroke="#1f2de6"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+
+                        {/* Key Data Points */}
+                        <circle cx="20" cy="115" r="3.5" fill="#1f2de6" />
+                        <circle cx="240" cy="90" r="3.5" fill="#1f2de6" />
+                        <circle cx="460" cy="65" r="3.5" fill="#1f2de6" />
+                        <circle cx="590" cy="25" r="4.5" fill="#ffffff" stroke="#1f2de6" strokeWidth="2.5" />
+                        <circle cx="680" cy="40" r="3.5" fill="#1f2de6" />
+                      </svg>
+
+                      {/* Day Labels */}
+                      <div className="flex justify-between text-[11px] font-mono text-[#8c93a0] mt-2 px-1">
+                        <span>Sen</span>
+                        <span>Sel</span>
+                        <span>Rab</span>
+                        <span>Kam</span>
+                        <span>Jum</span>
+                        <span className="font-bold text-[#1f2de6]">Sab</span>
+                        <span>Min</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Notifikasi Pembayaran Masuk */}
@@ -1461,32 +1371,42 @@ export default function UserDashboard({
                       </span>
                     </div>
 
-                    <div className="divide-y divide-[#f1f3f7] mt-3">
-                      {INCOMING_PAYMENTS.map((payment) => (
-                        <div key={payment.id} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="space-y-0.5 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold text-[#0b0c0e] truncate">{payment.name}</p>
-                              <span className="text-[10px] font-mono text-[#8c93a0] shrink-0">• {payment.time}</span>
-                            </div>
-                            <p className="text-[11px] text-[#585d6b] truncate">{payment.event}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-mono font-extrabold text-[#0b0c0e] block">
-                              {payment.amount}
-                            </span>
-                            <span className="text-[9px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
-                              {payment.status}
-                            </span>
-                          </div>
+                    {INCOMING_PAYMENTS.length === 0 ? (
+                      <div className="py-12 text-center flex flex-col items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-2">
+                          <span className="material-symbols-outlined text-[20px]">receipt_long</span>
                         </div>
-                      ))}
-                    </div>
+                        <p className="text-xs font-bold text-[#0b0c0e]">Belum Ada Pembayaran Masuk</p>
+                        <p className="text-[11px] text-[#8c93a0] mt-0.5 max-w-[200px]">Transaksi pembayaran tiket akan muncul di sini secara otomatis.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[#f1f3f7] mt-3">
+                        {INCOMING_PAYMENTS.map((payment) => (
+                          <div key={payment.id} className="py-2.5 flex items-center justify-between gap-3">
+                            <div className="space-y-0.5 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-[#0b0c0e] truncate">{payment.name}</p>
+                                <span className="text-[10px] font-mono text-[#8c93a0] shrink-0">• {payment.time}</span>
+                              </div>
+                              <p className="text-[11px] text-[#585d6b] truncate">{payment.event}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-xs font-mono font-extrabold text-[#0b0c0e] block">
+                                {payment.amount}
+                              </span>
+                              <span className="text-[9px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
+                                {payment.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-3 border-t border-[#f1f3f7] mt-3 flex items-center justify-between text-xs font-mono">
                     <span className="text-[#8c93a0]">Total Hari Ini</span>
-                    <span className="font-bold text-[#0b0c0e]">Rp 1.100.000</span>
+                    <span className="font-bold text-[#0b0c0e]">Rp 0</span>
                   </div>
                 </div>
               </div>
@@ -1499,7 +1419,7 @@ export default function UserDashboard({
                       Workspace Terbaru
                     </h3>
                     <span className="text-[11px] font-mono bg-[#f4f5f8] border border-[#e2e5ea] px-2 py-0.5 rounded text-[#585d6b]">
-                      {workspaces.length > 0 ? workspaces.length : 3} aktif
+                      {workspaces.length} aktif
                     </span>
                   </div>
 
@@ -1513,34 +1433,25 @@ export default function UserDashboard({
                 </div>
 
                 {/* Horizontal Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(workspaces.length > 0
-                    ? workspaces
-                    : [
-                      {
-                        id: 'demo-1',
-                        owner_id: user.id,
-                        name: 'National Tech Innovation Summit 2026',
-                        service_type: 'spark',
-                        status: 'published',
-                        slug: 'tech-summit-2026',
-                        description: null,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                      },
-                      {
-                        id: 'demo-2',
-                        owner_id: user.id,
-                        name: 'Untitled Event',
-                        service_type: 'spark',
-                        status: 'draft',
-                        slug: 'untitled-event',
-                        description: null,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                      },
-                    ]
-                  ).map((ws, idx) => (
+                {workspaces.length === 0 ? (
+                  <div className="p-8 rounded-xl border border-dashed border-[#e2e5ea] bg-white text-center flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+                      <span className="material-symbols-outlined text-[24px]">web</span>
+                    </div>
+                    <h3 className="font-heading text-sm font-bold text-[#0b0c0e]">Belum Ada Workspace Event</h3>
+                    <p className="text-xs text-[#585d6b] mt-1 max-w-sm">Mulai buat website event pertama Anda menggunakan builder profesional Iventra.</p>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateModalOpen(true)}
+                      className="mt-4 px-4 py-2 rounded-lg bg-[#1f2de6] text-white text-xs font-bold hover:bg-[#1622b8] transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">add</span>
+                      <span>Buat Event Baru</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {workspaces.map((ws, idx) => (
                     <div
                       key={ws.id}
                       onClick={() => onOpenBuilder(ws)}
@@ -1579,6 +1490,7 @@ export default function UserDashboard({
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -2347,37 +2259,45 @@ export default function UserDashboard({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#f0f2f5]">
-                        {subscription.invoices.map((inv) => (
-                          <tr key={inv.id} className="hover:bg-[#fafbfc] transition-colors">
-                            <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
-                              {inv.id}
-                            </td>
-                            <td className="px-4 py-3 text-[#585d6b] font-mono">
-                              {formatIndonesianDate(inv.date)}
-                            </td>
-                            <td className="px-4 py-3 text-[#0b0c0e] font-medium">
-                              {inv.planName}
-                            </td>
-                            <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
-                              {inv.amount}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                {inv.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => showToast(`Mengunduh invoice ${inv.id}...`)}
-                                className="px-2.5 py-1 rounded border border-[#e2e5ea] hover:bg-white text-[11px] font-mono text-[#0b0c0e] transition-colors cursor-pointer"
-                              >
-                                Unduh PDF
-                              </button>
+                        {subscription.invoices.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-xs text-[#8c93a0]">
+                              Belum ada riwayat transaksi atau faktur pembayaran.
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          subscription.invoices.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-[#fafbfc] transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
+                                {inv.id}
+                              </td>
+                              <td className="px-4 py-3 text-[#585d6b] font-mono">
+                                {formatIndonesianDate(inv.date)}
+                              </td>
+                              <td className="px-4 py-3 text-[#0b0c0e] font-medium">
+                                {inv.planName}
+                              </td>
+                              <td className="px-4 py-3 font-mono font-bold text-[#0b0c0e]">
+                                {inv.amount}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  {inv.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => showToast(`Mengunduh invoice ${inv.id}...`)}
+                                  className="px-2.5 py-1 rounded border border-[#e2e5ea] hover:bg-white text-[11px] font-mono text-[#0b0c0e] transition-colors cursor-pointer"
+                                >
+                                  Unduh PDF
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>

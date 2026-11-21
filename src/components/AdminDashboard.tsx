@@ -18,6 +18,11 @@ export interface AdminUser {
   traffic_limit: number;
   traffic_percent: number;
   submissions_count: number;
+  age?: number | null;
+  gender?: string | null;
+  onboarding_role?: string | null;
+  onboarding_purpose?: string | null;
+  onboarding_source?: string | null;
 }
 
 export interface AdminUserDetailWorkspace {
@@ -45,6 +50,11 @@ export interface AdminUserDetail {
   traffic_percent: number;
   total_submissions: number;
   workspaces_count: number;
+  age?: number | null;
+  gender?: string | null;
+  onboarding_role?: string | null;
+  onboarding_purpose?: string | null;
+  onboarding_source?: string | null;
   workspaces: AdminUserDetailWorkspace[];
 }
 
@@ -146,8 +156,8 @@ export default function AdminDashboard({
 
   // Site Settings state
   const [settings, setSettings] = useState<SiteSettings>({
-    sparkPrice: 'Rp 150rb - 300rb',
-    sparkPriceNote: '/ event',
+    sparkPrice: 'Rp 150.000',
+    sparkPriceNote: '/ bulan',
     flowPrice: 'Mulai Rp 500.000',
     flowPriceNote: '/ event',
     botPrice: 'Rp 70.000',
@@ -899,6 +909,34 @@ export default function AdminDashboard({
                         </div>
                       </div>
 
+                      {/* Profil & Personalized Setup Info Panel */}
+                      <div className="p-4 rounded-xl bg-white border border-[#e2e5ea] shadow-2xs">
+                        <div className="text-[11px] font-mono font-bold text-[#585d6b] uppercase mb-3 flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[16px] text-[#1f2de6]">badge</span>
+                          <span>Profil &amp; Personalized Setup</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          <div>
+                            <span className="text-[#8c93a0] block text-[10px] font-mono uppercase">Umur &amp; Gender</span>
+                            <span className="font-semibold text-[#0b0c0e]">
+                              {selectedUserDetail.age ? `${selectedUserDetail.age} tahun` : '-'} {selectedUserDetail.gender ? `(${selectedUserDetail.gender})` : ''}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[#8c93a0] block text-[10px] font-mono uppercase">Peran / Profesi</span>
+                            <span className="font-semibold text-[#0b0c0e]">{selectedUserDetail.onboarding_role || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#8c93a0] block text-[10px] font-mono uppercase">Kebutuhan Event</span>
+                            <span className="font-semibold text-[#0b0c0e]">{selectedUserDetail.onboarding_purpose || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#8c93a0] block text-[10px] font-mono uppercase">Sumber Informasi</span>
+                            <span className="font-semibold text-[#0b0c0e]">{selectedUserDetail.onboarding_source || '-'}</span>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* 3 Metric Cards for this User */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {/* 1. Traffic Quota */}
@@ -1261,7 +1299,19 @@ export default function AdminDashboard({
                                       </div>
                                       <div className="min-w-0">
                                         <div className="font-heading font-bold text-[#0b0c0e] truncate">{u.name}</div>
-                                        <div className="text-[11px] font-mono text-[#8c93a0] truncate">{u.email}</div>
+                                        <div className="text-[11px] font-mono text-[#8c93a0] truncate">
+                                          {u.email}
+                                          {(u.age || u.gender) && (
+                                            <span className="text-[#585d6b]"> · {u.age ? `${u.age} thn` : ''} {u.gender ? `(${u.gender})` : ''}</span>
+                                          )}
+                                        </div>
+                                        {(u.onboarding_role || u.onboarding_purpose) && (
+                                          <div className="text-[10px] text-[#1f2de6] font-medium truncate mt-0.5">
+                                            {u.onboarding_role ? `${u.onboarding_role}` : ''}
+                                            {u.onboarding_role && u.onboarding_purpose ? ' • ' : ''}
+                                            {u.onboarding_purpose ? `${u.onboarding_purpose}` : ''}
+                                          </div>
+                                        )}
                                       </div>
                                       {u.role === 'admin' && (
                                         <span className="ml-1 text-[9px] font-mono font-bold uppercase bg-[#0b0c0e] text-white px-1.5 py-0.2 rounded">

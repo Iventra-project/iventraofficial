@@ -139,11 +139,13 @@ export default function SparkSubscriptionModal({
               onClose();
               if (onConsultationRequest) {
                 onConsultationRequest();
+              } else {
+                window.location.hash = '#spark-pro-checkout';
               }
             }}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#1f2de6] hover:bg-[#1622b8] text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
           >
-            <span>Konsultasi Aktivasi Paket</span>
+            <span>Beli Spark Pro</span>
             <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
           </button>
         </div>

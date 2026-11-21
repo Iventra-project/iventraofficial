@@ -12,7 +12,7 @@ test('PACKAGES has Spark, Flow, and Bot packages configured', () => {
   assert.ok(PACKAGES.flow);
   assert.ok(PACKAGES.bot);
   assert.equal(PACKAGES.flow.isPopular, true);
-  assert.equal(PACKAGES.spark.priceLabel, 'Rp 150rb - 300rb');
+  assert.equal(PACKAGES.spark.priceLabel, 'Rp 150.000');
   assert.equal(PACKAGES.flow.priceLabel, 'Mulai Rp 500.000');
   assert.equal(PACKAGES.bot.priceLabel, 'Rp 70.000');
 });

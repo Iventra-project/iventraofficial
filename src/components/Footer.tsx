@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useLanguage } from '../context/LanguageContext.tsx';
+import { ScrollReveal } from './ui/ScrollReveal.tsx';
 import {
   Instagram,
   Mail,
@@ -38,8 +39,9 @@ export default function Footer({ onOpenConsultation, onOpenTerms, onOpenAdmin }:
   return (
     <footer className="w-full border-t border-slate-200 bg-white pt-14 pb-10 text-slate-600 text-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Main 4-Column Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 lg:gap-8 pb-12">
+        <ScrollReveal yOffset={24} duration={0.65}>
+          {/* Main 4-Column Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 lg:gap-8 pb-12">
           {/* Column 1: Stay Connected (Newsletter) */}
           <div className="lg:col-span-4 space-y-4">
             <h3 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight text-slate-900 leading-tight">
@@ -231,6 +233,7 @@ export default function Footer({ onOpenConsultation, onOpenTerms, onOpenAdmin }:
             )}
           </div>
         </div>
+        </ScrollReveal>
       </div>
     </footer>
   );

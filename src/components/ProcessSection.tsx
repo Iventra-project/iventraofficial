@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext.tsx';
+import { ScrollReveal } from './ui/ScrollReveal.tsx';
 import {
   Layers3,
   SlidersHorizontal,
@@ -64,17 +65,17 @@ export default function ProcessSection() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
-        <div className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
+        <ScrollReveal yOffset={24} className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-extrabold text-slate-900 tracking-tight mb-4">
             {t.process.title}
           </h2>
           <p className="text-base text-slate-600 leading-relaxed font-normal">
             {t.process.description}
           </p>
-        </div>
+        </ScrollReveal>
 
         {/* Interactive Workspace Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <ScrollReveal delay={0.12} yOffset={30} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           {/* Left Column: 3 Interactive Step Triggers */}
           <div className="lg:col-span-5 space-y-4">
             {steps.map((step, idx) => {
@@ -350,7 +351,7 @@ export default function ProcessSection() {
               </div>
             </div>
           </div>
-        </div>
+        </ScrollReveal>
       </div>
     </section>
   );

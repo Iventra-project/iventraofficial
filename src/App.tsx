@@ -18,6 +18,8 @@ import UserDashboard, { type Workspace } from './components/UserDashboard.tsx';
 import SparkBuilder from './components/spark/SparkBuilder.tsx';
 import PublicEventPage from './components/spark/PublicEventPage.tsx';
 import SparkProCheckoutPage from './components/SparkProCheckoutPage.tsx';
+import ExpertConsultationPage from './components/ExpertConsultationPage.tsx';
+import { TopSkeletonBar, InitialSiteSkeleton } from './components/ui/LoadingSkeletonBar.tsx';
 
 // ─── Auth Helpers ─────────────────────────────────────────────────────────────
 
@@ -47,7 +49,7 @@ function clearStoredAuth() {
 
 // ─── App Views ────────────────────────────────────────────────────────────────
 
-type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event' | 'spark-pro-checkout';
+type AppView = 'landing' | 'admin' | 'auth' | 'dashboard' | 'builder' | 'public-event' | 'spark-pro-checkout' | 'expert-consultation';
 
 function parseHash(hash: string): {
   view: AppView;
@@ -56,6 +58,9 @@ function parseHash(hash: string): {
   oauthToken?: string;
   oauthError?: string;
 } {
+  if (hash === '#expert-consultation' || hash === '#expert') {
+    return { view: 'expert-consultation' };
+  }
   if (hash === '#spark-pro-checkout' || hash === '#checkout-pro') {
     return { view: 'spark-pro-checkout' };
   }
@@ -103,6 +108,7 @@ export default function App() {
 
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [onboardingUser, setOnboardingUser] = useState<{ token: string; user: AuthUser } | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(() => {
     if (typeof window === 'undefined') return false;
     return !!parseHash(window.location.hash).oauthToken;
@@ -113,11 +119,19 @@ export default function App() {
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
   const [trackerInitialId, setTrackerInitialId] = useState('IVN-2025-FTUI');
   const [infoModalType, setInfoModalType] = useState<'profile' | 'terms' | 'privacy' | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 750);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Dynamic Site Settings
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({
-    sparkPrice: 'Rp 150rb - 300rb',
-    sparkPriceNote: '/ event',
+    sparkPrice: 'Rp 150.000',
+    sparkPriceNote: '/ bulan',
     flowPrice: 'Mulai Rp 500.000',
     flowPriceNote: '/ event',
     botPrice: 'Rp 70.000',
@@ -209,6 +223,28 @@ export default function App() {
         setAuthToken(oauthToken);
         setAuthUser(data.user);
         saveStoredAuth(oauthToken, data.user);
+
+        // If user hasn't completed personalized setup yet, direct to Personalized Setup
+        if (!data.user.onboarding_role) {
+          setOnboardingUser({ token: oauthToken, user: data.user });
+          setView('auth');
+          window.location.hash = '#auth';
+          return;
+        }
+
+        const redirect = sessionStorage.getItem('post_login_redirect');
+        if (redirect) {
+          sessionStorage.removeItem('post_login_redirect');
+          window.location.hash = redirect;
+          if (redirect === '#spark-pro-checkout') {
+            setView('spark-pro-checkout');
+            return;
+          }
+          if (redirect === '#expert-consultation') {
+            setView('expert-consultation');
+            return;
+          }
+        }
         window.location.hash = '#dashboard';
         setView('dashboard');
       })
@@ -263,6 +299,16 @@ export default function App() {
         setView('admin');
       } else if (parsed.view === 'auth') {
         setView('auth');
+      } else if (parsed.view === 'spark-pro-checkout') {
+        if (!authToken || !authUser) {
+          sessionStorage.setItem('post_login_redirect', '#spark-pro-checkout');
+          window.location.hash = '#auth';
+          setView('auth');
+        } else {
+          setView('spark-pro-checkout');
+        }
+      } else if (parsed.view === 'expert-consultation') {
+        setView('expert-consultation');
       } else {
         setView('landing');
       }
@@ -314,15 +360,30 @@ export default function App() {
     setView('dashboard');
   };
 
-  const handleAuthSuccess = (token: string, user: AuthUser) => {
+  const handleAuthSuccess = (token: string, user: AuthUser, redirectHash?: string) => {
+    setOnboardingUser(null);
     setAuthToken(token);
     setAuthUser(user);
     saveStoredAuth(token, user);
+    const redirect = redirectHash || sessionStorage.getItem('post_login_redirect');
+    if (redirect) {
+      sessionStorage.removeItem('post_login_redirect');
+      window.location.hash = redirect;
+      if (redirect === '#spark-pro-checkout') {
+        setView('spark-pro-checkout');
+        return;
+      }
+      if (redirect === '#expert-consultation') {
+        setView('expert-consultation');
+        return;
+      }
+    }
     window.location.hash = '#dashboard';
     setView('dashboard');
   };
 
   const handleLogout = () => {
+    setOnboardingUser(null);
     setAuthToken(null);
     setAuthUser(null);
     setActiveWorkspace(null);
@@ -412,6 +473,7 @@ export default function App() {
           onAuthSuccess={handleAuthSuccess}
           onBackToSite={handleBackToSite}
           oauthError={parseHash(window.location.hash).oauthError}
+          initialOnboardingUser={onboardingUser}
         />
       </div>
     );
@@ -433,6 +495,13 @@ export default function App() {
       setView('auth');
       return null;
     }
+    // If user hasn't completed personalized setup yet, direct to onboarding
+    if (!authUser.onboarding_role) {
+      setOnboardingUser({ token: authToken, user: authUser });
+      setView('auth');
+      window.location.hash = '#auth';
+      return null;
+    }
     return (
       <div className="selection:bg-[#0c1df3] selection:text-white">
         <UserDashboard
@@ -449,19 +518,46 @@ export default function App() {
 
   // 6. SPARK PRO CHECKOUT PAGE
   if (view === 'spark-pro-checkout') {
+    if (isCheckingAuth) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-white">
+          <div className="h-8 w-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+    if (!authToken || !authUser) {
+      sessionStorage.setItem('post_login_redirect', '#spark-pro-checkout');
+      window.location.hash = '#auth';
+      setView('auth');
+      return null;
+    }
     return (
       <SparkProCheckoutPage
         onBack={handleBackToSite}
         onOpenDashboard={handleOpenDashboard}
-        defaultPrice={siteSettings.sparkPrice || 'Rp 149.000'}
+        defaultPrice={siteSettings.sparkPrice ? `${siteSettings.sparkPrice} / bulan` : 'Rp 150.000 / bulan'}
+        userEmail={authUser?.email}
       />
     );
   }
 
-  // 7. PUBLIC LANDING PAGE (DEFAULT)
+  // 7. EXPERT CONSULTATION PAGE
+  if (view === 'expert-consultation') {
+    return (
+      <ExpertConsultationPage
+        onBack={handleBackToSite}
+        onOpenTracker={() => setIsTrackerOpen(true)}
+      />
+    );
+  }
+
+  // 8. PUBLIC LANDING PAGE (DEFAULT)
   return (
     <LanguageProvider>
       <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-600 selection:text-white">
+        <TopSkeletonBar isLoading={isInitialLoading} />
+        <InitialSiteSkeleton isVisible={isInitialLoading} />
+
         <Navbar
           onOpenConsultation={() => handleOpenConsultation()}
           onOpenDashboard={handleOpenDashboard}
@@ -482,8 +578,18 @@ export default function App() {
           <ServicesSection
             onSelectPlan={(planId) => handleOpenConsultation(planId)}
             onOpenSparkProCheckout={() => {
-              window.location.hash = '#spark-pro-checkout';
-              setView('spark-pro-checkout');
+              if (!authToken || !authUser) {
+                sessionStorage.setItem('post_login_redirect', '#spark-pro-checkout');
+                window.location.hash = '#auth';
+                setView('auth');
+              } else {
+                window.location.hash = '#spark-pro-checkout';
+                setView('spark-pro-checkout');
+              }
+            }}
+            onOpenExpertConsultation={() => {
+              window.location.hash = '#expert-consultation';
+              setView('expert-consultation');
             }}
             prices={pricesForServices}
           />

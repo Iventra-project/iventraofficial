@@ -19,8 +19,8 @@ export const PACKAGES: Record<string, PackageInfo> = {
     badge: 'Self-Service',
     isPopular: false,
     tagline: 'Untuk event simpel & cepat tanpa repot seperti webinar, seminar, & talkshow kampus.',
-    priceLabel: 'Rp 150rb - 300rb',
-    priceNote: '/ event',
+    priceLabel: 'Rp 150.000',
+    priceNote: '/ bulan',
     basePrice: 200000,
     tags: ['Form custom', 'Pendaftaran', 'Self-service'],
     features: [

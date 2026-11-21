@@ -13,47 +13,47 @@ export interface ServicesPrices {
 interface ServicesSectionProps {
   onSelectPlan: (planId: 'spark' | 'flow' | 'bot') => void;
   onOpenSparkProCheckout?: () => void;
+  onOpenExpertConsultation?: () => void;
   prices?: ServicesPrices;
 }
 
-export default function ServicesSection({ onSelectPlan, onOpenSparkProCheckout, prices }: ServicesSectionProps) {
+export default function ServicesSection({ onSelectPlan, onOpenSparkProCheckout, onOpenExpertConsultation, prices }: ServicesSectionProps) {
   const { t } = useLanguage();
 
   const plans: PricingPlan[] = [
     {
-      label: t.services.sparkLabel,
       name: 'Iventra Spark',
-      price: 'Rp 0',
-      period: '/ event',
-      priceNote: 'Gratis selamanya untuk 1 event aktif',
-      description: t.services.sparkDesc,
+      price: 'Gratis',
+      period: '',
+      priceNote: '',
       features: [
-        '100+ Template Event Siap Pakai',
-        'Live Dynamic Timeline & Stages',
-        'Formulir Pendaftaran Terintegrasi',
-        'Export Data Peserta ke Excel/CSV',
-        'Subdomain iventra.site Resmi'
+        '1.000 Kuota Trafik / Minggu',
+        'Akses hingga 5 Workspace',
+        'Akses 11 Fitur Unik Pembuatan Web',
+        'Akses Seluruh Koleksi Template',
+        'Publikasi Website Gratis',
+        'Dashboard Admin Terintegrasi',
+        'Akses Integrasi Pembayaran 1x'
       ],
-      buttonText: t.services.sparkBtn,
+      buttonText: t.services.sparkBtn || 'Pakai Gratis Sekarang',
       href: '#dashboard'
     },
     {
-      label: t.services.proLabel,
       name: 'Iventra Spark Pro',
-      price: prices?.sparkPrice || 'Rp 149.000',
-      period: prices?.sparkPriceNote || '/ event',
-      priceNote: 'Bayar sekali saat event dipublikasikan',
-      description: t.services.proDesc,
+      price: 'Rp 150.000',
+      period: '/ bulan',
+      priceNote: '',
       features: [
-        'Semua fitur Spark Free',
-        'Custom Domain (contoh: namaevent.com)',
-        'Sistem E-Tiket Barcode & QR Scan',
-        'WhatsApp Notifikasi Otomatis',
-        'Unlimited Form Responses & Peserta',
-        'Priority Server & Fast CDN Global'
+        '10.000 Kuota Trafik / Minggu',
+        'Akses hingga 30 Workspace',
+        'Akses Lengkap Seluruh Fitur Pro',
+        'Termasuk Semua Fitur Iventra Spark',
+        'Dukungan Domain Kustom Sendiri',
+        'Sistem E-Tiket & Scanner QR Code',
+        'Notifikasi WhatsApp Blast Otomatis'
       ],
       isPopular: true,
-      buttonText: t.services.proBtn,
+      buttonText: t.services.proBtn || 'Pilih Spark Pro',
       onClick: () => {
         if (onOpenSparkProCheckout) {
           onOpenSparkProCheckout();
@@ -63,21 +63,25 @@ export default function ServicesSection({ onSelectPlan, onOpenSparkProCheckout, 
       }
     },
     {
-      label: t.services.expertLabel,
       name: 'Iventra Expert',
       price: 'Konsultasi',
-      period: '/ custom brief',
-      priceNote: 'Proposal & SLA pengerjaan dalam 24 jam',
-      description: t.services.expertDesc,
+      period: '',
+      priceNote: '',
       features: [
-        'Desain Kustom Unik dari Tim Desainer UI/UX',
-        'Integrasi Payment Gateway (QRIS, BCA, VA)',
+        'Desain Kustom Eksklusif Tim UI/UX',
+        'Kapasitas Trafik & Peserta Tanpa Batas',
+        'Integrasi Payment Gateway Multi-bank',
         'Sistem Scanner QR On-Site Panitia',
-        'Custom Multi-tier Ticketing & Bundling',
         'Dedicated Project Manager & On-Site Support'
       ],
-      buttonText: t.services.expertBtn,
-      onClick: () => onSelectPlan('flow')
+      buttonText: t.services.expertBtn || 'Hubungi Tim Expert',
+      onClick: () => {
+        if (onOpenExpertConsultation) {
+          onOpenExpertConsultation();
+        } else {
+          window.location.hash = '#expert-consultation';
+        }
+      }
     }
   ];
 

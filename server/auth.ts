@@ -13,6 +13,7 @@ import {
   savePendingEmailVerification,
   updateUserProfile,
   updateUserPassword,
+  updateUserOnboarding,
   verifyPendingEmailAndCreateUser,
   type OAuthProvider
 } from './db.ts';
@@ -59,11 +60,30 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function sanitizeUser(user: { id: string; email: string; name: string; created_at: string }) {
+function sanitizeUser(user: {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string;
+  role?: string;
+  plan?: string;
+  age?: number | null;
+  gender?: string | null;
+  onboarding_role?: string | null;
+  onboarding_purpose?: string | null;
+  onboarding_source?: string | null;
+}) {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
+    role: (user as any).role || 'user',
+    plan: (user as any).plan || 'spark',
+    age: (user as any).age ?? null,
+    gender: (user as any).gender ?? null,
+    onboarding_role: (user as any).onboarding_role ?? null,
+    onboarding_purpose: (user as any).onboarding_purpose ?? null,
+    onboarding_source: (user as any).onboarding_source ?? null,
     createdAt: user.created_at
   };
 }
@@ -245,7 +265,7 @@ const EMAIL_CODE_WINDOW_MS = 60 * 60 * 1000;
 const EMAIL_CODE_MAX_SENDS_PER_WINDOW = 5;
 const EMAIL_CODE_MAX_ATTEMPTS = 5;
 
-class EmailDeliveryError extends Error {}
+class EmailDeliveryError extends Error { }
 
 function getEmailOtpSecret(): string | null {
   const secret = process.env.EMAIL_OTP_SECRET?.trim();
@@ -336,7 +356,7 @@ function getEmailCodeRateLimit(
   }
 
   if (now - pending.window_started_at < EMAIL_CODE_WINDOW_MS &&
-      pending.sends_in_window >= EMAIL_CODE_MAX_SENDS_PER_WINDOW) {
+    pending.sends_in_window >= EMAIL_CODE_MAX_SENDS_PER_WINDOW) {
     return {
       retryAfterSeconds: Math.ceil((pending.window_started_at + EMAIL_CODE_WINDOW_MS - now) / 1000),
       message: 'Batas pengiriman kode tercapai. Coba lagi nanti.'
@@ -350,6 +370,8 @@ async function issueEmailVerificationCode(input: {
   email: string;
   name: string;
   passwordHash: string;
+  age?: number | null;
+  gender?: string | null;
   config: { apiKey: string; sender: EmailSender; secret: string };
   pending: ReturnType<typeof getPendingEmailVerification>;
 }): Promise<{ retryAfterSeconds: number }> {
@@ -370,7 +392,9 @@ async function issueEmailVerificationCode(input: {
     attempts: 0,
     sends_in_window: sendsInWindow,
     window_started_at: windowStartedAt,
-    resend_after: now + EMAIL_CODE_RESEND_DELAY_MS
+    resend_after: now + EMAIL_CODE_RESEND_DELAY_MS,
+    age: input.age ?? null,
+    gender: input.gender ?? null
   });
 
   await sendEmailVerificationCode(email, input.name, code, input.config);
@@ -411,20 +435,20 @@ router.post('/oauth/:provider/start', (req: Request, res: Response) => {
       : new URL('https://www.facebook.com/v24.0/dialog/oauth');
     authorizationUrl.search = new URLSearchParams(providerName === 'google'
       ? {
-          client_id: config.clientId,
-          redirect_uri: redirectUri,
-          response_type: 'code',
-          scope: 'openid email profile',
-          state,
-          prompt: 'select_account'
-        }
+        client_id: config.clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: 'openid email profile',
+        state,
+        prompt: 'select_account'
+      }
       : {
-          client_id: config.clientId,
-          redirect_uri: redirectUri,
-          response_type: 'code',
-          scope: 'email,public_profile',
-          state
-        }).toString();
+        client_id: config.clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: 'email,public_profile',
+        state
+      }).toString();
 
     return res.json({ url: authorizationUrl.toString() });
   } catch (error) {
@@ -503,12 +527,15 @@ router.get('/oauth/:provider/callback', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, username, age, gender, email, password } = req.body;
+    const finalName = (typeof username === 'string' && username.trim()) || (typeof name === 'string' && name.trim()) || '';
 
     // Server-side validation
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ error: 'Nama minimal 2 karakter.' });
+    if (!finalName || finalName.length < 2) {
+      return res.status(400).json({ error: 'Username minimal 2 karakter.' });
     }
+    const parsedAge = age ? parseInt(String(age), 10) : null;
+    const parsedGender = gender ? String(gender).trim() : null;
     if (!email || !isValidEmail(email)) {
       return res.status(400).json({ error: 'Format email tidak valid.' });
     }
@@ -542,8 +569,10 @@ router.post('/register', async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const result = await issueEmailVerificationCode({
       email: normalizedEmail,
-      name: name.trim(),
+      name: finalName,
       passwordHash,
+      age: parsedAge,
+      gender: parsedGender,
       config,
       pending
     });
@@ -658,13 +687,39 @@ router.post('/register/verify', (req: Request, res: Response) => {
       return res.status(error.status).json({ error: error.message });
     }
 
+    const token = signToken({ userId: result.user.id, email: result.user.email });
+
     return res.json({
       verified: true,
-      message: 'Verifikasi berhasil. Silakan login dengan email dan password Anda.'
+      token,
+      user: sanitizeUser(result.user),
+      message: 'Verifikasi berhasil.'
     });
   } catch (error) {
     console.error('[auth/register/verify]', error);
     return res.status(500).json({ error: 'Verifikasi gagal diproses. Coba lagi.' });
+  }
+});
+
+/**
+ * POST /api/auth/onboarding
+ * Body: { role, purpose, source, selectedPlan }
+ */
+router.post('/onboarding', requireAuth, (req: Request, res: Response) => {
+  try {
+    const { role, purpose, source, selectedPlan } = req.body;
+    const userId = req.user?.userId;
+    if (userId) {
+      updateUserOnboarding(userId, { role, purpose, source, selectedPlan });
+      const updatedUser = getUserById(userId);
+      if (updatedUser) {
+        return res.json({ success: true, user: sanitizeUser(updatedUser) });
+      }
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[auth/onboarding]', error);
+    return res.json({ success: false });
   }
 });
 
