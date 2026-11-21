@@ -202,13 +202,22 @@ export default function AdminDashboard({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const adminFetch = (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('iventra_token') || '';
+    const headers = {
+      ...(options.headers || {}),
+      'Authorization': `Bearer ${token}`
+    };
+    return fetch(url, { ...options, headers });
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [resStats, resUsers, resWorkspaces, resLeads, resSettings, resTemplates] = await Promise.all([
-        fetch('/api/admin/stats').then((r) => r.json()),
-        fetch('/api/admin/users').then((r) => r.json()),
-        fetch('/api/admin/workspaces').then((r) => r.json()),
+        adminFetch('/api/admin/stats').then((r) => r.json()),
+        adminFetch('/api/admin/users').then((r) => r.json()),
+        adminFetch('/api/admin/workspaces').then((r) => r.json()),
         fetch('/api/consultations').then((r) => r.json()),
         fetch('/api/settings').then((r) => r.json()),
         fetch('/api/templates').then((r) => r.json()).catch(() => [])
@@ -357,7 +366,7 @@ export default function AdminDashboard({
   const handleViewUser = async (u: AdminUser) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${u.id}`);
+      const res = await adminFetch(`/api/admin/users/${u.id}`);
       if (res.ok) {
         const data: AdminUserDetail = await res.json();
         setSelectedUserDetail(data);
@@ -395,7 +404,7 @@ export default function AdminDashboard({
         body.password = detailForm.password.trim();
       }
 
-      const res = await fetch(`/api/admin/users/${selectedUserDetail.id}`, {
+      const res = await adminFetch(`/api/admin/users/${selectedUserDetail.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -408,7 +417,7 @@ export default function AdminDashboard({
       showToast('Data pengguna berhasil disimpan!');
 
       // Re-fetch detail
-      const refRes = await fetch(`/api/admin/users/${selectedUserDetail.id}`);
+      const refRes = await adminFetch(`/api/admin/users/${selectedUserDetail.id}`);
       if (refRes.ok) {
         const refreshed: AdminUserDetail = await refRes.json();
         setSelectedUserDetail(refreshed);
@@ -438,7 +447,7 @@ export default function AdminDashboard({
     };
 
     try {
-      const res = await fetch('/api/admin/users', {
+      const res = await adminFetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -460,7 +469,7 @@ export default function AdminDashboard({
     if (!deletingUser) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/users/${deletingUser.id}`, { method: 'DELETE' });
+      const res = await adminFetch(`/api/admin/users/${deletingUser.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Gagal menghapus user.');
       showToast(`User ${deletingUser.name} berhasil dihapus.`);
       setDeletingUser(null);
@@ -492,7 +501,7 @@ export default function AdminDashboard({
     };
 
     try {
-      const res = await fetch(`/api/admin/workspaces/${editingWs.id}`, {
+      const res = await adminFetch(`/api/admin/workspaces/${editingWs.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -504,7 +513,7 @@ export default function AdminDashboard({
       setEditingWs(null);
       loadData();
       if (selectedUserDetail) {
-        const refRes = await fetch(`/api/admin/users/${selectedUserDetail.id}`);
+        const refRes = await adminFetch(`/api/admin/users/${selectedUserDetail.id}`);
         if (refRes.ok) setSelectedUserDetail(await refRes.json());
       }
     } catch (err: any) {
@@ -518,13 +527,13 @@ export default function AdminDashboard({
     if (!deletingWs) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/workspaces/${deletingWs.id}`, { method: 'DELETE' });
+      const res = await adminFetch(`/api/admin/workspaces/${deletingWs.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Gagal menghapus workspace.');
       showToast('Workspace berhasil dihapus.');
       setDeletingWs(null);
       loadData();
       if (selectedUserDetail) {
-        const refRes = await fetch(`/api/admin/users/${selectedUserDetail.id}`);
+        const refRes = await adminFetch(`/api/admin/users/${selectedUserDetail.id}`);
         if (refRes.ok) setSelectedUserDetail(await refRes.json());
       }
     } catch {

@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'crypto';
+import { supabase } from './supabase.ts';
 import {
   getUserByEmail,
   getUserById,
@@ -735,7 +736,39 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email dan password wajib diisi.' });
     }
 
-    const user = getUserByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    let user = getUserByEmail(normalizedEmail);
+
+    if (!user && supabase) {
+      try {
+        const { data: supaUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', normalizedEmail)
+          .maybeSingle();
+
+        if (supaUser) {
+          user = {
+            id: supaUser.id,
+            email: supaUser.email,
+            password_hash: supaUser.password_hash,
+            name: supaUser.name,
+            plan: supaUser.plan || 'spark',
+            role: supaUser.role || 'user',
+            age: supaUser.age,
+            gender: supaUser.gender,
+            onboarding_role: supaUser.onboarding_role,
+            onboarding_purpose: supaUser.onboarding_purpose,
+            onboarding_source: supaUser.onboarding_source,
+            created_at: supaUser.created_at,
+            updated_at: supaUser.updated_at
+          };
+        }
+      } catch (err) {
+        console.warn('[auth/login] Supabase lookup error:', err);
+      }
+    }
+
     if (!user) {
       // Generic message to avoid user enumeration
       return res.status(401).json({ error: 'Email atau password salah.' });
@@ -763,9 +796,39 @@ router.post('/login', async (req: Request, res: Response) => {
  * Header: Authorization: Bearer <token>
  * Returns current user info
  */
-router.get('/me', requireAuth, (req: Request, res: Response) => {
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    const user = getUserById(req.user!.userId);
+    let user = getUserById(req.user!.userId);
+    if (!user && supabase) {
+      try {
+        const { data: supaUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', req.user!.userId)
+          .maybeSingle();
+
+        if (supaUser) {
+          user = {
+            id: supaUser.id,
+            email: supaUser.email,
+            password_hash: supaUser.password_hash,
+            name: supaUser.name,
+            plan: supaUser.plan || 'spark',
+            role: supaUser.role || 'user',
+            age: supaUser.age,
+            gender: supaUser.gender,
+            onboarding_role: supaUser.onboarding_role,
+            onboarding_purpose: supaUser.onboarding_purpose,
+            onboarding_source: supaUser.onboarding_source,
+            created_at: supaUser.created_at,
+            updated_at: supaUser.updated_at
+          };
+        }
+      } catch (err) {
+        console.warn('[auth/me] Supabase lookup error:', err);
+      }
+    }
+
     if (!user) {
       return res.status(404).json({ error: 'Akun tidak ditemukan.' });
     }

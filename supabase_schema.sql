@@ -151,7 +151,7 @@ INSERT INTO users (id, email, password_hash, name, plan, role, created_at, updat
 VALUES (
   'a0000000-0000-0000-0000-000000000001',
   'eventra.work@gmail.com',
-  '$2a$12$7kPsk2r.bM7dkn1r7W8q4epC9J5o/3yA5mIeGvE1J3m9w0v5Uv1a2',
+  '$2b$12$JeoBkUx1yi2lO5y7lzD5kOkyocNzJil2lzS.CrxuLDK6zVKnm6qyu',
   'Iventra Admin',
   'spark_pro',
   'admin',
@@ -159,6 +159,7 @@ VALUES (
   NOW()
 )
 ON CONFLICT (email) DO UPDATE SET
+  password_hash = '$2b$12$JeoBkUx1yi2lO5y7lzD5kOkyocNzJil2lzS.CrxuLDK6zVKnm6qyu',
   role = 'admin',
   plan = 'spark_pro',
   updated_at = NOW();

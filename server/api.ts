@@ -28,6 +28,7 @@ import {
   adminUpdateWorkspace,
   adminDeleteWorkspace,
   getUserByEmail,
+  getUserById,
   getAllTemplates,
   saveTemplate,
   deleteTemplate,
@@ -36,10 +37,57 @@ import {
 import authRouter from './auth.ts';
 import workspacesRouter from './workspaces.ts';
 import jwt from 'jsonwebtoken';
+import { supabase } from './supabase.ts';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'iventra-dev-secret-change-in-production';
 
 export const apiApp = express();
 
 apiApp.use(express.json());
+
+// ─── Admin Authentication Guard ──────────────────────────────────────────────
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Akses ditolak. Token autentikasi admin diperlukan.' });
+  }
+
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
+    const normalizedEmail = (payload.email || '').toLowerCase().trim();
+
+    if (normalizedEmail !== 'eventra.work@gmail.com') {
+      return res.status(403).json({ error: 'Akses terlarang. Hanya akun administrator resmi (eventra.work@gmail.com) yang diizinkan.' });
+    }
+
+    let user = getUserByEmail(normalizedEmail) || (payload.userId ? getUserById(payload.userId) : null);
+    if (!user && supabase) {
+      try {
+        const { data: supaUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', normalizedEmail)
+          .maybeSingle();
+        if (supaUser) user = supaUser as any;
+      } catch (err) {
+        console.warn('[requireAdmin] Supabase lookup error:', err);
+      }
+    }
+
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: 'Akses terlarang. Akun tidak memiliki peran admin.' });
+    }
+
+    (req as any).user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Token tidak valid atau telah kedaluwarsa. Silakan login kembali.' });
+  }
+}
+
+// Protect all admin routes
+apiApp.use('/api/admin', requireAdmin);
 
 // ─── Auth & Workspace routes ──────────────────────────────────────────────────
 apiApp.use('/api/auth', authRouter);

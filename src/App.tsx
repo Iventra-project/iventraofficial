@@ -236,6 +236,10 @@ export default function App() {
         if (redirect) {
           sessionStorage.removeItem('post_login_redirect');
           window.location.hash = redirect;
+          if (redirect === '#admin') {
+            setView('admin');
+            return;
+          }
           if (redirect === '#spark-pro-checkout') {
             setView('spark-pro-checkout');
             return;
@@ -369,6 +373,10 @@ export default function App() {
     if (redirect) {
       sessionStorage.removeItem('post_login_redirect');
       window.location.hash = redirect;
+      if (redirect === '#admin') {
+        setView('admin');
+        return;
+      }
       if (redirect === '#spark-pro-checkout') {
         setView('spark-pro-checkout');
         return;
@@ -447,8 +455,105 @@ export default function App() {
     );
   }
 
-  // 3. ADMIN VIEW
+  // 3. ADMIN VIEW (Gated strictly for eventra.work@gmail.com with role === 'admin')
   if (view === 'admin') {
+    const isMasterAdmin = Boolean(
+      authToken &&
+      authUser &&
+      authUser.email?.toLowerCase().trim() === 'eventra.work@gmail.com' &&
+      authUser.role === 'admin'
+    );
+
+    if (!authToken || !authUser) {
+      sessionStorage.setItem('post_login_redirect', '#admin');
+      return (
+        <div className="min-h-screen bg-[#f8f9fe] flex flex-col items-center justify-center p-4 text-center font-sans">
+          <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 space-y-6">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
+              <span className="material-symbols-outlined text-[32px]">admin_panel_settings</span>
+            </div>
+            <div className="space-y-2">
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold tracking-wider uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                PORTAL ADMINISTRATOR
+              </span>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight pt-1">Akses Admin Dilindungi</h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Halaman ini dilindungi dan hanya dapat diakses oleh akun administrator utama (<strong className="text-slate-900 font-mono">eventra.work@gmail.com</strong>).
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('post_login_redirect', '#admin');
+                  window.location.hash = '#auth';
+                  setView('auth');
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg cursor-pointer"
+              >
+                Masuk dengan Akun Admin
+              </button>
+              <button
+                type="button"
+                onClick={handleBackToSite}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-colors cursor-pointer"
+              >
+                Kembali ke Beranda
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!isMasterAdmin) {
+      return (
+        <div className="min-h-screen bg-[#f8f9fe] flex flex-col items-center justify-center p-4 text-center font-sans">
+          <div className="max-w-md w-full bg-white rounded-2xl border border-red-200 shadow-xl p-8 space-y-6">
+            <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto shadow-inner">
+              <span className="material-symbols-outlined text-[32px]">gpp_bad</span>
+            </div>
+            <div className="space-y-2">
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold tracking-wider uppercase bg-red-50 text-red-700 border border-red-200">
+                403 · AKSES DITOLAK
+              </span>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight pt-1">Izin Tidak Memadai</h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Anda sedang masuk sebagai <strong className="text-slate-900 font-mono">{authUser.email}</strong>. Akun ini tidak memiliki hak akses administrator.
+              </p>
+              <p className="text-xs text-slate-500">
+                Akses konsol admin hanya terbuka untuk akun <strong>eventra.work@gmail.com</strong>.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  handleLogout();
+                  sessionStorage.setItem('post_login_redirect', '#admin');
+                  window.location.hash = '#auth';
+                  setView('auth');
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg cursor-pointer"
+              >
+                Ganti Akun (Login Admin)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = '#dashboard';
+                  setView('dashboard');
+                }}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-colors cursor-pointer"
+              >
+                Kembali ke Dashboard Saya
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#f8f9fe] text-[#191930] selection:bg-[#0c1df3] selection:text-white">
         <AdminDashboard
