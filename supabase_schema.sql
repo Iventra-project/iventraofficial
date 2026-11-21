@@ -15,11 +15,32 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   plan TEXT NOT NULL DEFAULT 'spark' CHECK (plan IN ('spark', 'spark_pro')),
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  age INTEGER DEFAULT NULL,
+  gender TEXT DEFAULT NULL,
+  onboarding_role TEXT DEFAULT NULL,
+  onboarding_purpose TEXT DEFAULT NULL,
+  onboarding_source TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- 2B. TABLE: PENDING EMAIL VERIFICATIONS (Kode OTP Pendaftaran)
+CREATE TABLE IF NOT EXISTS pending_email_verifications (
+  email TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  sends_in_window INTEGER NOT NULL DEFAULT 1,
+  window_started_at BIGINT NOT NULL,
+  resend_after BIGINT NOT NULL,
+  age INTEGER DEFAULT NULL,
+  gender TEXT DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- 3. TABLE: OAUTH ACCOUNTS
 CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -111,14 +132,41 @@ CREATE TABLE IF NOT EXISTS site_settings (
   value TEXT NOT NULL
 );
 
--- SEED DEFAULT SITE SETTINGS
-INSERT INTO site_settings (key, value) VALUES
-  ('sparkPrice', 'Rp 150rb - 300rb'),
-  ('sparkPriceNote', '/ event'),
-  ('flowPrice', 'Mulai Rp 500.000'),
-  ('flowPriceNote', '/ event'),
-  ('botPrice', 'Rp 70.000'),
-  ('botPriceNote', '/ event'),
-  ('totalProjectsHandled', '120+'),
-  ('totalActiveUsers', '15.000+')
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+-- 9. TABLE: TEMPLATES (Event Templates)
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  badge TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT,
+  preview_gradient TEXT,
+  recommended_for TEXT,
+  default_config JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- SEED PERMANENT ADMIN (eventra.work@gmail.com / fromsijatosija)
+-- Hash bcrypt untuk 'fromsijatosija'
+INSERT INTO users (id, email, password_hash, name, plan, role, created_at, updated_at)
+VALUES (
+  'a0000000-0000-0000-0000-000000000001',
+  'eventra.work@gmail.com',
+  '$2a$12$7kPsk2r.bM7dkn1r7W8q4epC9J5o/3yA5mIeGvE1J3m9w0v5Uv1a2',
+  'Iventra Admin',
+  'spark_pro',
+  'admin',
+  NOW(),
+  NOW()
+)
+ON CONFLICT (email) DO UPDATE SET
+  role = 'admin',
+  plan = 'spark_pro',
+  updated_at = NOW();
+
+-- 10. PERMISSIONS (Wajib untuk Supabase REST API & service_role)
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, service_role, anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, service_role, anon, authenticated;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, service_role, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, service_role, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, service_role, anon, authenticated;
+

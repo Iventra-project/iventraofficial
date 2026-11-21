@@ -19,6 +19,7 @@ import SparkEventRenderer from './SparkEventRenderer.tsx';
 import SparkSubscriptionModal from './SparkSubscriptionModal.tsx';
 import WorkspaceAnalyticsDashboard from './WorkspaceAnalyticsDashboard.tsx';
 import type { Workspace } from '../UserDashboard.tsx';
+import Logo from '../Logo.tsx';
 
 interface SparkBuilderProps {
   workspace: Workspace;
@@ -848,6 +849,7 @@ export default function SparkBuilder({
             </button>
 
             <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+              <Logo size="xs" />
               <span className="font-semibold text-slate-800">Iventra Spark</span>
               <span>/</span>
               <span className="font-bold text-slate-900 truncate">{config.eventName || 'Untitled Event'}</span>
